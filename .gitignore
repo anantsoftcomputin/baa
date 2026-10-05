@@ -1,27 +1,46 @@
-# dependencies
+# ---------- Dependencies ----------
 node_modules/
 functions/node_modules/
+.pnp
+.pnp.js
 
-# production build
+# ---------- Builds & test output ----------
 /build
+coverage/
 
-# env files (secrets)
+# ---------- Secrets & environment ----------
+# Real env files stay local; .env.example is committed as a template.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 src/.env
 functions/.env*
 functions/.runtimeconfig.json
+*-service-account*.json
+serviceAccountKey*.json
+*.pem
+*.key
 
-# firebase
+# ---------- Firebase ----------
 .firebase/
 firebase-debug.log*
+firebase-debug.*.log*
 firestore-debug.log*
+database-debug.log*
+storage-debug.log*
+pubsub-debug.log*
 ui-debug.log*
+emulator-data/
 
-# misc
-.DS_Store
+# ---------- Logs ----------
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-coverage/
+
+# ---------- OS & editors ----------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
