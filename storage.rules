@@ -1,0 +1,140 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return request.auth != null && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.userRole in ['Admin', 'Superuser'];
+    }
+    
+    function isMember() {
+      return request.auth != null && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.is_member == true;
+    }
+    
+    function isValidImageSize() {
+      return request.resource.size < 10 * 1024 * 1024; // 10MB max
+    }
+    
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*') && isValidImageSize();
+    }
+
+    // ==================== PROFILE PICTURES ====================
+    match /profiles/{userId}/{allPaths=**} {
+      // Users can read any profile picture
+      allow read: if isAuthenticated();
+      
+      // Users can upload their own profile pictures
+      allow write: if isAuthenticated() && 
+                      isOwner(userId) && 
+                      isValidImage();
+    }
+
+    // ==================== POSTS ====================
+    match /posts/{userId}/{allPaths=**} {
+      // Authenticated users can read post images
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can upload images for their own posts
+      allow write: if isAuthenticated() && 
+                      isOwner(userId) && 
+                      isValidImage();
+    }
+
+    // ==================== EVENTS ====================
+    match /events/{eventId}/{allPaths=**} {
+      // Anyone can read event images (for public landing page)
+      allow read: if true;
+      
+      // Only admins can upload event images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== INITIATIVES ====================
+    match /initiatives/{initiativeId}/{allPaths=**} {
+      // Anyone can read initiative images
+      allow read: if true;
+      
+      // Only admins can upload initiative images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== WEBSITE CONTENT ====================
+    match /website/{section}/{allPaths=**} {
+      // Anyone can read website images
+      allow read: if true;
+      
+      // Only admins can upload website images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== BLOGS ====================
+    match /blogs/{blogId}/{allPaths=**} {
+      // Anyone can read blog images
+      allow read: if true;
+      
+      // Only admins can upload blog images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== GALLERY ====================
+    match /gallery/{allPaths=**} {
+      // Anyone can read gallery images
+      allow read: if true;
+      
+      // Only admins can upload gallery images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== COMMITTEE ====================
+    match /committee/{allPaths=**} {
+      // Anyone can read committee images (for public landing page)
+      allow read: if true;
+      
+      // Only admins can upload committee images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== ACHIEVEMENTS ====================
+    match /achievements/{allPaths=**} {
+      // Anyone can read achievement images (for public landing page)
+      allow read: if true;
+      
+      // Only admins can upload achievement images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== TESTIMONIALS ====================
+    match /testimonials/{allPaths=**} {
+      // Anyone can read testimonial images (for public landing page)
+      allow read: if true;
+      
+      // Only admins can upload testimonial images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== HERO IMAGES ====================
+    match /heroImages/{allPaths=**} {
+      // Anyone can read hero images (for public landing page)
+      allow read: if true;
+      
+      // Only admins can upload hero images
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ==================== DEFAULT DENY ====================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

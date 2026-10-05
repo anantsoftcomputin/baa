@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "activeTaskName": "default",
+  "persistTasks": [
+    {
+      "name": "default",
+      "persistFiles": []
+    }
+  ]
+}

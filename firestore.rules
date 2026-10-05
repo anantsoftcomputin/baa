@@ -1,0 +1,257 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole in ['Admin', 'Superuser'];
+    }
+    
+    function isSuperuser() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole == 'Superuser';
+    }
+    
+    function isMember() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_member == true;
+    }
+    
+    function isEmailVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+
+    // ==================== USERS ====================
+    match /users/{userId} {
+      // Authenticated users can read public profiles or their own profile
+      allow read: if isAuthenticated();
+      
+      // Users can create their own profile (email verification happens after account creation)
+      allow create: if isAuthenticated() && 
+                       isOwner(userId);
+      
+      // Users can update their own profile, admins can update any
+      allow update: if isOwner(userId) || isAdmin();
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // ==================== POSTS ====================
+    match /posts/{postId} {
+      // All authenticated users can read posts
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can create posts
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.user_id);
+      
+      // Post author can update their own posts
+      allow update: if isAuthenticated() && isOwner(resource.data.user_id);
+      
+      // Post author or admin can delete posts
+      allow delete: if isOwner(resource.data.user_id) || isAdmin();
+    }
+
+    // ==================== LIKES ====================
+    match /likes/{likeId} {
+      // Authenticated users can read likes
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can create likes for themselves
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      
+      // Users can delete their own likes
+      allow delete: if isOwner(resource.data.userId);
+      
+      // No updates allowed
+      allow update: if false;
+    }
+
+    // ==================== COMMENTS ====================
+    match /comments/{commentId} {
+      // Authenticated users can read comments
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can create comments
+      allow create: if isAuthenticated() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Comment author can update their own comments
+      allow update: if resource.data.userId == request.auth.uid;
+      
+      // Comment author or admin can delete comments
+      allow delete: if resource.data.userId == request.auth.uid || isAdmin();
+    }
+
+    // ==================== EVENTS ====================
+    match /events/{eventId} {
+      // Anyone can read events (for public landing page)
+      allow read: if true;
+      
+      // Only admins can create, update, or delete events
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==================== INITIATIVES ====================
+    match /initiatives/{initiativeId} {
+      // Anyone can read initiatives
+      allow read: if true;
+      
+      // Only admins can create, update, or delete initiatives
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==================== WEBSITE CONTENT ====================
+    match /websiteContent/{contentType} {
+      // Anyone can read website content (for public landing page)
+      allow read: if true;
+      
+      // Only admins can update website content
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==================== TESTIMONIALS ====================
+    match /testimonials/{testimonialId} {
+      // Anyone can read testimonials
+      allow read: if true;
+      
+      // Only admins can manage testimonials
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==================== COMMITTEE ====================
+    match /committee/{memberId} {
+      // Anyone can read committee members
+      allow read: if true;
+      
+      // Only superusers can manage committee
+      allow create, update, delete: if isSuperuser();
+    }
+
+    // ==================== ACHIEVEMENTS ====================
+    match /achievements/{achievementId} {
+      // Anyone can read achievements
+      allow read: if true;
+      
+      // Only admins can manage achievements
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==================== BLOGS ====================
+    match /blogs/{blogId} {
+      // Anyone can read blogs
+      allow read: if true;
+      
+      // Only admins can manage blogs
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==================== GALLERY ====================
+    match /gallery/{imageId} {
+      // Anyone can read gallery images
+      allow read: if true;
+      
+      // Only admins can manage gallery
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==================== PAYMENTS ====================
+    match /payments/{paymentId} {
+      // Users can read their own payment records, admins can read all
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      
+      // Only system or admin can create payment records
+      allow create: if isAdmin();
+      
+      // No updates or deletes allowed
+      allow update, delete: if false;
+    }
+
+    // ==================== NOTIFICATIONS ====================
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isOwner(resource.data.userId);
+      
+      // System can create notifications
+      allow create: if isAuthenticated();
+      
+      // Users can mark their own notifications as read
+      allow update: if isOwner(resource.data.userId) && 
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      
+      // Users can delete their own notifications
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // ==================== WEBSITE CONTENT (PUBLIC) ====================
+    // Public website content - anyone can read
+    match /websiteContent/{document} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /testimonials/{testimonialId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /committee/{committeeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /achievements/{achievementId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /gallery/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /heroImages/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Contact form submissions
+    match /contactSubmissions/{submissionId} {
+      allow create: if true;
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Feedback submissions
+    match /feedback/{feedbackId} {
+      allow create: if true;
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // ==================== DEFAULT DENY ====================
+    // Deny access to any other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
