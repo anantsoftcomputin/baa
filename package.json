@@ -39,7 +39,9 @@
     "deploy:hosting": "npm run build && firebase deploy --only hosting",
     "deploy:rules": "firebase deploy --only firestore:rules,storage:rules",
     "firebase:init": "firebase init",
-    "firebase:login": "firebase login"
+    "firebase:login": "firebase login",
+    "test:rules": "firebase emulators:exec --only firestore --project baa-rules-test \"node --test rules-tests/firestore.rules.test.js\"",
+    "test:functions": "npm --prefix functions test"
   },
   "eslintConfig": {
     "extends": [
@@ -58,5 +60,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2"
   }
 }

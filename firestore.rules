@@ -1,230 +1,198 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
+
+    // ==================== HELPERS ====================
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-    
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function isAdmin() {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole in ['Admin', 'Superuser'];
+      return isAuthenticated() && hasUserDoc() &&
+             userDoc().data.get('userRole', 'User') in ['Admin', 'Superuser'];
     }
-    
+
     function isSuperuser() {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRole == 'Superuser';
+      return isAuthenticated() && hasUserDoc() &&
+             userDoc().data.get('userRole', 'User') == 'Superuser';
     }
-    
-    function isMember() {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_member == true;
-    }
-    
+
+    // Google accounts are always verified; email/password accounts must click the link.
     function isEmailVerified() {
       return isAuthenticated() && request.auth.token.email_verified == true;
     }
 
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Fields only an admin (or a Cloud Function using the Admin SDK) may set.
+    function privilegedUserFields() {
+      return ['userRole', 'is_member', 'membershipDate', 'paymentDetails', 'followers'];
+    }
+
+    // A counter may move by at most one step per write.
+    function counterStep(field) {
+      return math.abs(request.resource.data.get(field, 0) - resource.data.get(field, 0)) <= 1;
+    }
+
+    // Someone other than the owner may only add or remove *themselves* from `followers`.
+    function isSelfFollowToggle() {
+      let before = resource.data.get('followers', []).toSet();
+      let after = request.resource.data.get('followers', []).toSet();
+      return changedKeys().hasOnly(['followers']) &&
+             after.difference(before).union(before.difference(after)).hasOnly([request.auth.uid]);
+    }
+
+    function isZeroish(v) {
+      return v == null || v == 0 || v == '' || v == '0';
+    }
+
+    function eventIsFree(eventId) {
+      let ev = get(/databases/$(database)/documents/events/$(eventId)).data;
+      return isZeroish(ev.get('amount', 0)) && isZeroish(ev.get('guest_amount', 0));
+    }
+
     // ==================== USERS ====================
     match /users/{userId} {
-      // Authenticated users can read public profiles or their own profile
       allow read: if isAuthenticated();
-      
-      // Users can create their own profile (email verification happens after account creation)
-      allow create: if isAuthenticated() && 
-                       isOwner(userId);
-      
-      // Users can update their own profile, admins can update any
-      allow update: if isOwner(userId) || isAdmin();
-      
-      // Only admins can delete users
+
+      // A new account may only create its own profile, as a regular non-member.
+      allow create: if isOwner(userId) &&
+                       request.resource.data.get('userRole', 'User') == 'User' &&
+                       request.resource.data.get('is_member', false) == false &&
+                       !request.resource.data.keys().hasAny(['membershipDate', 'paymentDetails', 'followers']);
+
+      // Admins manage membership; only Superusers may change anyone's role.
+      allow update: if (isAdmin() && (!changedKeys().hasAny(['userRole']) || isSuperuser())) ||
+                       (isOwner(userId) && !changedKeys().hasAny(privilegedUserFields())) ||
+                       (isAuthenticated() && !isOwner(userId) && isSelfFollowToggle());
+
       allow delete: if isAdmin();
     }
 
     // ==================== POSTS ====================
     match /posts/{postId} {
-      // All authenticated users can read posts
       allow read: if isAuthenticated();
-      
-      // Authenticated users can create posts
-      allow create: if isAuthenticated() && 
-                       isOwner(request.resource.data.user_id);
-      
-      // Post author can update their own posts
-      allow update: if isAuthenticated() && isOwner(resource.data.user_id);
-      
-      // Post author or admin can delete posts
+
+      allow create: if isEmailVerified() &&
+                       request.resource.data.user_id == request.auth.uid &&
+                       request.resource.data.get('likesCount', 0) == 0 &&
+                       request.resource.data.get('commentsCount', 0) == 0 &&
+                       request.resource.data.get('sharesCount', 0) == 0;
+
+      // Authors may edit their post (but not forge counters or ownership).
+      // Any signed-in user may bump a counter by one (like, comment, share).
+      allow update: if (isOwner(resource.data.user_id) &&
+                        !changedKeys().hasAny(['user_id', 'likesCount', 'commentsCount', 'sharesCount'])) ||
+                       (isAuthenticated() &&
+                        changedKeys().hasOnly(['likesCount', 'commentsCount', 'sharesCount']) &&
+                        counterStep('likesCount') && counterStep('commentsCount') && counterStep('sharesCount'));
+
       allow delete: if isOwner(resource.data.user_id) || isAdmin();
     }
 
     // ==================== LIKES ====================
+    // Document id is `${postId}_${userId}`.
     match /likes/{likeId} {
-      // Authenticated users can read likes
       allow read: if isAuthenticated();
-      
-      // Authenticated users can create likes for themselves
-      allow create: if isAuthenticated() && 
-                       isOwner(request.resource.data.userId);
-      
-      // Users can delete their own likes
+      allow create: if isEmailVerified() &&
+                       request.resource.data.userId == request.auth.uid &&
+                       likeId == request.resource.data.postId + '_' + request.auth.uid;
       allow delete: if isOwner(resource.data.userId);
-      
-      // No updates allowed
       allow update: if false;
     }
 
     // ==================== COMMENTS ====================
     match /comments/{commentId} {
-      // Authenticated users can read comments
       allow read: if isAuthenticated();
-      
-      // Authenticated users can create comments
-      allow create: if isAuthenticated() && 
-                       request.resource.data.userId == request.auth.uid;
-      
-      // Comment author can update their own comments
-      allow update: if resource.data.userId == request.auth.uid;
-      
-      // Comment author or admin can delete comments
-      allow delete: if resource.data.userId == request.auth.uid || isAdmin();
+      allow create: if isEmailVerified() && request.resource.data.userId == request.auth.uid;
+      allow update: if isOwner(resource.data.userId) &&
+                       !changedKeys().hasAny(['userId', 'postId']);
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // ==================== SHARES ====================
+    match /shares/{shareId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
     // ==================== EVENTS ====================
     match /events/{eventId} {
-      // Anyone can read events (for public landing page)
       allow read: if true;
-      
-      // Only admins can create, update, or delete events
       allow create, update, delete: if isAdmin();
+    }
+
+    // Document id is `${eventId}_${userId}`.
+    // Paid registrations are confirmed only by the `verifyPayment` Cloud Function.
+    match /eventRegistrations/{registrationId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+      allow create: if isEmailVerified() &&
+                       request.resource.data.userId == request.auth.uid &&
+                       registrationId == request.resource.data.eventId + '_' + request.auth.uid &&
+                       request.resource.data.get('payment_status', 'pending') in ['pending', 'free'] &&
+                       (request.resource.data.status == 'pending_payment' ||
+                        (request.resource.data.status == 'confirmed' &&
+                         request.resource.data.payment_status == 'free' &&
+                         eventIsFree(request.resource.data.eventId)));
+
+      // Members may cancel a registration they have not paid for.
+      allow delete: if isAdmin() ||
+                       (isAuthenticated() && resource.data.userId == request.auth.uid &&
+                        resource.data.get('payment_status', 'pending') != 'paid');
+
+      allow update: if isAdmin();
     }
 
     // ==================== INITIATIVES ====================
     match /initiatives/{initiativeId} {
-      // Anyone can read initiatives
       allow read: if true;
-      
-      // Only admins can create, update, or delete initiatives
       allow create, update, delete: if isAdmin();
     }
 
-    // ==================== WEBSITE CONTENT ====================
-    match /websiteContent/{contentType} {
-      // Anyone can read website content (for public landing page)
-      allow read: if true;
-      
-      // Only admins can update website content
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ==================== TESTIMONIALS ====================
-    match /testimonials/{testimonialId} {
-      // Anyone can read testimonials
-      allow read: if true;
-      
-      // Only admins can manage testimonials
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ==================== COMMITTEE ====================
-    match /committee/{memberId} {
-      // Anyone can read committee members
-      allow read: if true;
-      
-      // Only superusers can manage committee
-      allow create, update, delete: if isSuperuser();
-    }
-
-    // ==================== ACHIEVEMENTS ====================
-    match /achievements/{achievementId} {
-      // Anyone can read achievements
-      allow read: if true;
-      
-      // Only admins can manage achievements
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ==================== BLOGS ====================
-    match /blogs/{blogId} {
-      // Anyone can read blogs
-      allow read: if true;
-      
-      // Only admins can manage blogs
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ==================== GALLERY ====================
-    match /gallery/{imageId} {
-      // Anyone can read gallery images
-      allow read: if true;
-      
-      // Only admins can manage gallery
-      allow create, update, delete: if isAdmin();
+    // Written only by the `verifyPayment` Cloud Function.
+    match /contributions/{contributionId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if false;
     }
 
     // ==================== PAYMENTS ====================
+    // Written only by Cloud Functions (Admin SDK bypasses these rules).
     match /payments/{paymentId} {
-      // Users can read their own payment records, admins can read all
-      allow read: if isOwner(resource.data.userId) || isAdmin();
-      
-      // Only system or admin can create payment records
-      allow create: if isAdmin();
-      
-      // No updates or deletes allowed
-      allow update, delete: if false;
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /paymentOrders/{orderId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if false;
     }
 
     // ==================== NOTIFICATIONS ====================
     match /notifications/{notificationId} {
-      // Users can read their own notifications
       allow read: if isOwner(resource.data.userId);
-      
-      // System can create notifications
-      allow create: if isAuthenticated();
-      
-      // Users can mark their own notifications as read
-      allow update: if isOwner(resource.data.userId) && 
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      
-      // Users can delete their own notifications
-      allow delete: if isOwner(resource.data.userId);
+      allow create: if isAdmin();
+      allow update: if isOwner(resource.data.userId) && changedKeys().hasOnly(['read']);
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
     }
 
-    // ==================== WEBSITE CONTENT (PUBLIC) ====================
-    // Public website content - anyone can read
+    // ==================== PUBLIC WEBSITE CONTENT ====================
     match /websiteContent/{document} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /testimonials/{testimonialId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /committee/{committeeId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /achievements/{achievementId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /blogs/{blogId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /gallery/{imageId} {
       allow read: if true;
       allow write: if isAdmin();
     }
@@ -234,22 +202,47 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Contact form submissions
-    match /contactSubmissions/{submissionId} {
-      allow create: if true;
-      allow read: if isAdmin();
-      allow update, delete: if isAdmin();
+    match /testimonials/{testimonialId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // Feedback submissions
+    // Committee is managed from the Admin Panel, which Admins and Superusers can open.
+    match /committee/{memberId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /achievements/{achievementId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /gallery/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ==================== PUBLIC FORMS ====================
+    match /contactSubmissions/{submissionId} {
+      allow create: if request.resource.data.keys().hasAll(['name', 'email']) &&
+                       request.resource.data.name is string && request.resource.data.name.size() < 200 &&
+                       request.resource.data.email is string && request.resource.data.email.size() < 200;
+      allow read, update, delete: if isAdmin();
+    }
+
     match /feedback/{feedbackId} {
-      allow create: if true;
-      allow read: if isAdmin();
-      allow update, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasAll(['name', 'feedback']) &&
+                       request.resource.data.feedback is string && request.resource.data.feedback.size() < 5000;
+      allow read, update, delete: if isAdmin();
     }
 
     // ==================== DEFAULT DENY ====================
-    // Deny access to any other collections
     match /{document=**} {
       allow read, write: if false;
     }
