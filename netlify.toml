@@ -8,6 +8,10 @@
   NODE_VERSION = "20"
   # CRA treats lint warnings as errors when CI=true; don't fail deploys on warnings.
   CI = "false"
+  # The Firebase *web* API key is public by design (it ships in every Firebase web app's
+  # JavaScript and only identifies the project; access is enforced by firestore.rules).
+  # Tell Netlify's secret scanner this exact value is expected. Other secrets are still scanned.
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyA7uNDKLk5fWOLjq3VEnGuPjFhmiHD3luE"
 
 # Single-page app: let React Router handle every path (deep links, refreshes).
 [[redirects]]
