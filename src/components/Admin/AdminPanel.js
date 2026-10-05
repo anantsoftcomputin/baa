@@ -12,6 +12,7 @@ import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import MailRoundedIcon from "@mui/icons-material/MailRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import RateReviewRoundedIcon from "@mui/icons-material/RateReviewRounded";
+import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import WebsiteContentManager from "./components/WebsiteContentManager";
 import EventsManager from "./components/EventsManager";
 import InitiativesManager from "./components/InitiativesManager";
@@ -21,12 +22,14 @@ import TestimonialsManager from "./components/TestimonialsManager";
 import CommitteeManager from "./components/CommitteeManager";
 import AchievementsManager from "./components/AchievementsManager";
 import UserManagement from "./components/UserManagement";
+import MembershipSettings from "./components/MembershipSettings";
 import ContactsManager from "./components/ContactsManager";
 import FeedbackManager from "./components/FeedbackManager";
 import DashboardHeader from "../common/DashboardHeader";
 
 export const ADMIN_TABS = [
   { key: "content", label: "Website content", icon: WebRoundedIcon, component: WebsiteContentManager },
+  { key: "membership", label: "Membership", icon: WorkspacePremiumRoundedIcon, component: MembershipSettings },
   { key: "events", label: "Events", icon: EventRoundedIcon, component: EventsManager },
   { key: "initiatives", label: "Initiatives", icon: VolunteerActivismRoundedIcon, component: InitiativesManager },
   { key: "blogs", label: "Blogs", icon: ArticleRoundedIcon, component: BlogsManager },

@@ -26,6 +26,7 @@ import WebRoundedIcon from "@mui/icons-material/WebRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import EditCalendarRoundedIcon from "@mui/icons-material/EditCalendarRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import PriceChangeRoundedIcon from "@mui/icons-material/PriceChangeRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import LogoImg from "../../../images/BAA.png";
 import { useAuth } from "../../../../contexts/AuthContext";
@@ -48,6 +49,7 @@ const ADMIN = [
   { text: "Admin panel", icon: AdminPanelSettingsRoundedIcon, link: "/dashboard/admin", exact: true },
   { text: "Manage events", icon: EditCalendarRoundedIcon, link: "/dashboard/admin?tab=events", tab: "events" },
   { text: "Website content", icon: WebRoundedIcon, link: "/dashboard/admin?tab=content", tab: "content" },
+  { text: "Membership fee", icon: PriceChangeRoundedIcon, link: "/dashboard/admin?tab=membership", tab: "membership" },
   { text: "Users", icon: ManageAccountsRoundedIcon, link: "/dashboard/admin?tab=users", tab: "users" },
 ];
 

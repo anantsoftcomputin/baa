@@ -94,13 +94,25 @@ export const MembershipCard = () => {
 
 /** /dashboard/membership (also reached via /becomemember). */
 const Membership = () => {
-  const { isMember, userProfile } = useAuth();
+  const navigate = useNavigate();
+  const { isMember, userProfile, isAdmin } = useAuth();
   const { settings, paying, purchase } = useMembershipPurchase();
   const benefits = settings.benefits?.length ? settings.benefits : DEFAULT_BENEFITS;
 
   return (
     <Box sx={{ maxWidth: 1000, mx: "auto" }}>
-      <DashboardHeader eyebrow="Membership" title="Lifetime membership" subtitle="Support the association and stay part of the Bhavan's family for life." />
+      <DashboardHeader
+        eyebrow="Membership"
+        title="Lifetime membership"
+        subtitle="Support the association and stay part of the Bhavan's family for life."
+        actions={
+          isAdmin && (
+            <Button variant="outlined" onClick={() => navigate("/dashboard/admin?tab=membership")}>
+              Change fee
+            </Button>
+          )
+        }
+      />
       <Grid container spacing={3}>
         <Grid item xs={12} md={7}>
           <Card sx={{ p: { xs: 3, md: 4 }, height: "100%" }}>

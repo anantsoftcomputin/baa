@@ -9,7 +9,6 @@ import {
   CircularProgress,
   Grid,
   IconButton,
-  InputAdornment,
   Stack,
   TextField,
   Tooltip,
@@ -21,9 +20,8 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
 import { toast } from "react-toastify";
-import { getWebsiteContent, updateWebsiteContent, DEFAULT_MEMBERSHIP_FEE } from "../../../firebase/firestore";
+import { getWebsiteContent, updateWebsiteContent } from "../../../firebase/firestore";
 import { uploadWebsiteImage } from "../../../firebase/storage";
-import { DEFAULT_BENEFITS } from "../../LandingPage/Component/Content/MembershipCta";
 import { logAdminAction } from "../../../firebase/analytics";
 
 const Panel = ({ title, description, children, defaultExpanded }) => (
@@ -77,21 +75,15 @@ const WebsiteContentManager = () => {
   const hero = useSection("heroImages", { images: [] });
   const contact = useSection("contact", { address: "", email: "", phone: "", grievance_officer: "" });
   const footer = useSection("footer", { about_text: "", copyright_text: "", facebook_link: "", instagram_link: "", linkedin_link: "", youtube_link: "" });
-  const membership = useSection("membership", { amount: String(DEFAULT_MEMBERSHIP_FEE), benefitsText: DEFAULT_BENEFITS.join("\n") });
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [a, h, c, f, m] = await Promise.all(["aboutUs", "heroImages", "contact", "footer", "membership"].map((k) => getWebsiteContent(k).catch(() => null)));
+        const [a, h, c, f] = await Promise.all(["aboutUs", "heroImages", "contact", "footer"].map((k) => getWebsiteContent(k).catch(() => null)));
         if (a) about.setValue((v) => ({ ...v, ...a }));
         if (h?.images) hero.setValue({ images: h.images });
         if (c) contact.setValue((v) => ({ ...v, ...c }));
         if (f) footer.setValue((v) => ({ ...v, ...f }));
-        if (m)
-          membership.setValue({
-            amount: m.amount ? String(m.amount) : String(DEFAULT_MEMBERSHIP_FEE),
-            benefitsText: (Array.isArray(m.benefits) && m.benefits.length ? m.benefits : DEFAULT_BENEFITS).join("\n"),
-          });
       } finally {
         setLoading(false);
       }
@@ -278,45 +270,6 @@ const WebsiteContentManager = () => {
           <Grid item xs={12}>
             <Button variant="contained" disabled={footer.saving} onClick={() => footer.save(strip(footer.value), "Footer updated")}>
               Save footer
-            </Button>
-          </Grid>
-        </Grid>
-      </Panel>
-
-      <Panel title="Membership" description="Lifetime membership fee and the benefits listed on the website. The fee is enforced by the payment server.">
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={4}>
-            {membership.field("amount", "Membership fee", {
-              inputProps: { inputMode: "decimal" },
-              InputProps: { startAdornment: <InputAdornment position="start">₹</InputAdornment> },
-            })}
-          </Grid>
-          <Grid item xs={12}>
-            {membership.field("benefitsText", "Benefits (one per line)", { multiline: true, minRows: 4 })}
-          </Grid>
-          <Grid item xs={12}>
-            <Button
-              variant="contained"
-              disabled={membership.saving}
-              onClick={() => {
-                const amount = parseFloat(membership.value.amount);
-                if (!Number.isFinite(amount) || amount <= 0) {
-                  toast.error("Enter a valid membership fee.");
-                  return;
-                }
-                membership.save(
-                  {
-                    amount,
-                    benefits: String(membership.value.benefitsText || "")
-                      .split("\n")
-                      .map((b) => b.trim())
-                      .filter(Boolean),
-                  },
-                  "Membership settings updated"
-                );
-              }}
-            >
-              Save membership settings
             </Button>
           </Grid>
         </Grid>
