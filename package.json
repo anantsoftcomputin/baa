@@ -1,6 +1,6 @@
 {
   "name": "baa-alumni-frontend",
-  "homepage": "./",
+  "homepage": "/",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -41,7 +41,10 @@
     "firebase:init": "firebase init",
     "firebase:login": "firebase login",
     "test:rules": "firebase emulators:exec --only firestore --project baa-rules-test \"node --test rules-tests/firestore.rules.test.js\"",
-    "test:functions": "npm --prefix functions test"
+    "test:functions": "npm --prefix functions test",
+    "emulators": "firebase emulators:start --only auth,firestore,storage --project demo-baa",
+    "emulators:seed": "node scripts/seed-emulator.js",
+    "start:emulators": "REACT_APP_USE_EMULATORS=true REACT_APP_FIREBASE_PROJECT_ID=demo-baa react-scripts start"
   },
   "eslintConfig": {
     "extends": [

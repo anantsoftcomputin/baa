@@ -145,7 +145,7 @@ export const uploadMultipleFiles = async (files, basePath, onProgress = null) =>
   }
 };
 
-export default {
+const storageApi = {
   uploadFile,
   uploadProfilePicture,
   uploadPostImage,
@@ -157,3 +157,5 @@ export default {
   deleteFile,
   uploadMultipleFiles
 };
+
+export default storageApi;

@@ -8,136 +8,159 @@ import {
   updateProfile,
   updatePassword,
   EmailAuthProvider,
-  reauthenticateWithCredential
+  reauthenticateWithCredential,
 } from "firebase/auth";
 import { auth, googleProvider } from "./config";
 import { createUserProfile, getUserProfile } from "./firestore";
 
+const toBatchYear = (value) => {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? n : null;
+};
+
 /**
- * Register new user with email and password
+ * Register a new user with email and password.
+ * Firebase signs the new account in automatically; we sign it straight back out
+ * so nobody reaches the dashboard before verifying their email.
  */
 export const registerWithEmail = async (email, password, username, batchyear) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Update display name
     await updateProfile(user, { displayName: username });
-
-    // Send verification email
     await sendEmailVerification(user);
 
-    // Create user profile in Firestore
     await createUserProfile(user.uid, {
       email: user.email,
-      username: username,
-      batchyear: batchyear,
-      createdAt: new Date().toISOString(),
+      username,
+      batchyear: toBatchYear(batchyear),
       emailVerified: false,
       is_member: false,
       userRole: "User",
-      terms_confirmed: true
+      terms_confirmed: true,
+      following: [],
     });
+
+    await signOut(auth);
 
     return {
       success: true,
-      user: user,
-      message: "Registration successful! Please verify your email."
+      user,
+      message: "Registration successful! Please verify your email, then sign in.",
     };
   } catch (error) {
     console.error("Registration error:", error);
+    // If the account was created but a later step failed, don't leave it signed in.
+    if (auth.currentUser && !auth.currentUser.emailVerified) {
+      await signOut(auth).catch(() => {});
+    }
     return {
       success: false,
       error: error.code,
-      message: getErrorMessage(error.code)
+      message: getErrorMessage(error.code),
     };
   }
 };
 
 /**
- * Sign in with email and password
+ * Sign in with email and password. Unverified accounts are signed back out.
  */
 export const loginWithEmail = async (email, password) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Check if email is verified
     if (!user.emailVerified) {
       await signOut(auth);
       return {
         success: false,
         error: "email-not-verified",
-        message: "Please verify your email before logging in."
+        message: "Please verify your email before logging in.",
       };
     }
 
-    // Get user profile to check membership status
     const userProfile = await getUserProfile(user.uid);
 
     return {
       success: true,
-      user: user,
-      userProfile: userProfile,
-      message: "Login successful!"
+      user,
+      userProfile,
+      message: "Welcome back!",
     };
   } catch (error) {
     console.error("Login error:", error);
     return {
       success: false,
       error: error.code,
-      message: getErrorMessage(error.code)
+      message: getErrorMessage(error.code),
     };
   }
 };
 
 /**
- * Sign in with Google
+ * Re-send the verification email for an account that hasn't been verified yet.
+ * Needs the password because Firebase only sends it to a signed-in user.
+ */
+export const resendVerificationEmail = async (email, password) => {
+  try {
+    const { user } = await signInWithEmailAndPassword(auth, email, password);
+    if (user.emailVerified) {
+      await signOut(auth);
+      return { success: true, message: "Your email is already verified. You can sign in." };
+    }
+    await sendEmailVerification(user);
+    await signOut(auth);
+    return { success: true, message: "Verification email sent. Please check your inbox." };
+  } catch (error) {
+    console.error("Resend verification error:", error);
+    return { success: false, error: error.code, message: getErrorMessage(error.code) };
+  }
+};
+
+/**
+ * Sign in with Google. Creates a profile on first sign-in.
  */
 export const loginWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
 
-    // Check if user profile exists, if not create one
     let userProfile = await getUserProfile(user.uid);
-    
-    if (!userProfile) {
-      // Create profile for new Google user
+    const isNewUser = !userProfile;
+
+    if (isNewUser) {
       await createUserProfile(user.uid, {
         email: user.email,
-        username: user.displayName || user.email.split('@')[0],
-        createdAt: new Date().toISOString(),
+        username: user.displayName || user.email.split("@")[0],
         emailVerified: true,
         is_member: false,
         userRole: "User",
         photoURL: user.photoURL,
         batchyear: null,
-        terms_confirmed: false
+        terms_confirmed: false,
+        following: [],
       });
       userProfile = await getUserProfile(user.uid);
     }
 
     return {
       success: true,
-      user: user,
-      userProfile: userProfile,
-      isNewUser: !userProfile,
-      message: "Login successful!"
+      user,
+      userProfile,
+      isNewUser,
+      message: isNewUser ? "Welcome to the BAA community!" : "Welcome back!",
     };
   } catch (error) {
     console.error("Google login error:", error);
     return {
       success: false,
       error: error.code,
-      message: getErrorMessage(error.code)
+      message: getErrorMessage(error.code),
     };
   }
 };
 
-/**
- * Sign out current user
- */
 export const logout = async () => {
   try {
     await signOut(auth);
@@ -147,33 +170,30 @@ export const logout = async () => {
     return {
       success: false,
       error: error.code,
-      message: "Failed to logout. Please try again."
+      message: "Failed to logout. Please try again.",
     };
   }
 };
 
-/**
- * Send password reset email
- */
 export const resetPassword = async (email) => {
   try {
     await sendPasswordResetEmail(auth, email);
     return {
       success: true,
-      message: "Password reset email sent! Check your inbox."
+      message: "Password reset email sent! Check your inbox.",
     };
   } catch (error) {
     console.error("Password reset error:", error);
     return {
       success: false,
       error: error.code,
-      message: getErrorMessage(error.code)
+      message: getErrorMessage(error.code),
     };
   }
 };
 
 /**
- * Change user password
+ * Change the signed-in user's password (email/password accounts only).
  */
 export const changePassword = async (currentPassword, newPassword) => {
   try {
@@ -182,37 +202,30 @@ export const changePassword = async (currentPassword, newPassword) => {
       throw new Error("No user logged in");
     }
 
-    // Re-authenticate user
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
-
-    // Update password
     await updatePassword(user, newPassword);
 
     return {
       success: true,
-      message: "Password changed successfully!"
+      message: "Password changed successfully!",
     };
   } catch (error) {
     console.error("Change password error:", error);
     return {
       success: false,
       error: error.code,
-      message: getErrorMessage(error.code)
+      message: getErrorMessage(error.code),
     };
   }
 };
 
-/**
- * Get current authenticated user
- */
-export const getCurrentUser = () => {
-  return auth.currentUser;
-};
+/** True when the user signed in with email/password (so a password can be changed). */
+export const hasPasswordProvider = (user) =>
+  !!user?.providerData?.some((p) => p.providerId === "password");
 
-/**
- * Get user error messages
- */
+export const getCurrentUser = () => auth.currentUser;
+
 const getErrorMessage = (errorCode) => {
   const errorMessages = {
     "auth/email-already-in-use": "This email is already registered.",
@@ -224,20 +237,26 @@ const getErrorMessage = (errorCode) => {
     "auth/wrong-password": "Incorrect password.",
     "auth/invalid-credential": "Invalid credentials. Please check your email and password.",
     "auth/too-many-requests": "Too many attempts. Please try again later.",
+    "auth/requires-recent-login": "Please sign in again and retry.",
     "email-not-verified": "Please verify your email before logging in.",
     "auth/popup-closed-by-user": "Sign-in popup was closed. Please try again.",
     "auth/cancelled-popup-request": "Sign-in cancelled.",
+    "auth/popup-blocked": "Your browser blocked the sign-in popup. Please allow popups and retry.",
   };
 
   return errorMessages[errorCode] || "An error occurred. Please try again.";
 };
 
-export default {
+const authApi = {
   registerWithEmail,
   loginWithEmail,
+  resendVerificationEmail,
   loginWithGoogle,
   logout,
   resetPassword,
   changePassword,
-  getCurrentUser
+  hasPasswordProvider,
+  getCurrentUser,
 };
+
+export default authApi;

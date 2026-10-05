@@ -1,81 +1,83 @@
 import React, { useEffect, useState } from "react";
-import {
-  Paper,
-  Typography,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
-  Avatar,
-  Box,
-  Button,
-} from "@mui/material";
-import RemoveRedEyeIcon from "@mui/icons-material/RemoveRedEye";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, query, limit } from "firebase/firestore";
-import { db } from "../../../../firebase/config";
+import { Box, Button, Card, Skeleton, Stack, Typography } from "@mui/material";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import { useAuth } from "../../../../contexts/AuthContext";
+import { getBatchYear, getRecentUsers, getUsersByYear } from "../../../../firebase/firestore";
+import UserAvatar from "../../../common/UserAvatar";
 
+/** "People you may know": batchmates first, then other recent members. */
 const DashboardUsers = () => {
-  const [userProfileData, setUserProfileData] = useState([]);
   const navigate = useNavigate();
+  const { currentUser, userProfile } = useAuth();
+  const [people, setPeople] = useState(null);
+  const myYear = getBatchYear(userProfile);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, limit(10));
-        const querySnapshot = await getDocs(q);
-        const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setUserProfileData(users);
-      } catch (error) {
-        console.error("Error fetching users:", error);
-      }
+    let alive = true;
+    const following = new Set(userProfile?.following || []);
+    Promise.all([myYear ? getUsersByYear(myYear).catch(() => []) : [], getRecentUsers(12).catch(() => [])]).then(([batch, recent]) => {
+      if (!alive) return;
+      const seen = new Set();
+      const list = [...batch, ...recent].filter((u) => {
+        if (u.id === currentUser?.uid || following.has(u.id) || seen.has(u.id)) return false;
+        seen.add(u.id);
+        return true;
+      });
+      setPeople(list.slice(0, 4));
+    });
+    return () => {
+      alive = false;
     };
-    fetchUsers();
-  }, []);
-
-  const handleViewAllClick = () => {
-    navigate("/dashboard/batchmates");
-  };
+  }, [currentUser?.uid, myYear, userProfile?.following]);
 
   return (
-    <Paper sx={{ p: 2, boxShadow: "0 4px 8px rgba(251, 166, 69, 0.5)" }}>
-      <Typography variant="h6" gutterBottom>
-        People You May Know
-      </Typography>
-      <List>
-        {userProfileData.slice(0, 3).map((data) => (
-          <ListItem key={data.id}>
-            <ListItemAvatar>
-              <Avatar sx={{ mr: 1 }}>
-                {data.username
-                  ? data.username.charAt(0).toUpperCase()
-                  : data.email?.charAt(0).toUpperCase() || "A"}
-              </Avatar>
-            </ListItemAvatar>
-            <ListItemText
-              primary={data.username || data.email || "User"}
-              secondary={
-                data.school_graduation_year
-                  ? `Batch of ${data.school_graduation_year}`
-                  : null
-              }
-            />
-            <ListItemText primary={data.phone_number || ""} />
-          </ListItem>
-        ))}
-      </List>
-      <Box textAlign="center" sx={{ mt: 1 }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleViewAllClick}
-          size="small"
-        >
-          <RemoveRedEyeIcon sx={{ mr: 1 }} /> View All
-        </Button>
-      </Box>
-    </Paper>
+    <Card sx={{ p: 2.5 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+        <Typography variant="h6">People you may know</Typography>
+      </Stack>
+      {people === null ? (
+        <Stack spacing={1.5}>
+          {[0, 1, 2].map((i) => (
+            <Stack key={i} direction="row" spacing={1.5} alignItems="center">
+              <Skeleton variant="circular" width={40} height={40} />
+              <Skeleton width="60%" />
+            </Stack>
+          ))}
+        </Stack>
+      ) : people.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          No suggestions right now.
+        </Typography>
+      ) : (
+        <Stack spacing={0.5}>
+          {people.map((u) => (
+            <Stack
+              key={u.id}
+              direction="row"
+              spacing={1.5}
+              alignItems="center"
+              onClick={() => navigate(`/dashboard/userProfile/${u.id}`)}
+              sx={{ p: 1, mx: -1, borderRadius: 2.5, cursor: "pointer", "&:hover": { bgcolor: "background.default" } }}
+            >
+              <UserAvatar user={u} size={40} />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle2" noWrap>
+                  {u.username || u.email?.split("@")[0] || "Alumnus"}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap component="div">
+                  {getBatchYear(u) ? `Batch of ${getBatchYear(u)}` : u.job_title || "BAA member"}
+                  {getBatchYear(u) && String(getBatchYear(u)) === String(myYear) ? " · your batch" : ""}
+                </Typography>
+              </Box>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+      <Button fullWidth variant="outlined" endIcon={<ArrowForwardRoundedIcon />} onClick={() => navigate("/dashboard/batchmates")} sx={{ mt: 2 }}>
+        Browse directory
+      </Button>
+    </Card>
   );
 };
 

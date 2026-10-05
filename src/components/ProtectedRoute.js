@@ -1,140 +1,52 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { Box, CircularProgress } from "@mui/material";
+import { FullPageLoader } from "./common/Loader";
 
-/**
- * Protected Route Component
- * Redirects to login if user is not authenticated
- */
+/** Requires a signed-in (and, for email accounts, verified) user. */
 export const ProtectedRoute = ({ children }) => {
   const { currentUser, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
+  if (loading) return <FullPageLoader />;
+  if (!currentUser) return <Navigate to="/login" state={{ from: location }} replace />;
   return children;
 };
 
-/**
- * Member-Only Route Component
- * Redirects to membership page if user is not a member
- */
+/** Requires a lifetime member; others are sent to the membership page. */
 export const MemberRoute = ({ children }) => {
   const { currentUser, userProfile, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  if (!userProfile?.is_member) {
-    return <Navigate to="/becomemember" replace />;
-  }
-
+  if (loading) return <FullPageLoader />;
+  if (!currentUser) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!userProfile?.is_member) return <Navigate to="/becomemember" replace />;
   return children;
 };
 
-/**
- * Admin-Only Route Component
- * Redirects to dashboard if user is not an admin
- */
+/** Requires an Admin or Superuser. The security rules enforce the same on the server. */
 export const AdminRoute = ({ children }) => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { currentUser, isAdmin, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  const isAdmin = userProfile?.userRole === "Admin" || userProfile?.userRole === "Superuser";
-
-  if (!isAdmin) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+  if (loading) return <FullPageLoader minHeight="60vh" />;
+  if (!currentUser) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
   return children;
 };
 
-/**
- * Public Route Component
- * Redirects to dashboard if user is already authenticated
- */
+/** Sign-in / register pages: signed-in users go to where they were heading (or the dashboard). */
 export const PublicRoute = ({ children }) => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { currentUser, loading } = useAuth();
+  const location = useLocation();
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
-
+  if (loading) return <FullPageLoader />;
   if (currentUser) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={location.state?.from?.pathname || "/dashboard"} replace />;
   }
-
   return children;
 };
 
-export default {
-  ProtectedRoute,
-  MemberRoute,
-  AdminRoute,
-  PublicRoute
-};
+const routes = { ProtectedRoute, MemberRoute, AdminRoute, PublicRoute };
+
+export default routes;

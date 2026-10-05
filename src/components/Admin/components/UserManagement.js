@@ -13,6 +13,7 @@ import {
   DialogActions,
   MenuItem,
   Select,
+  FormHelperText,
   FormControl,
   InputLabel,
   Chip,
@@ -36,10 +37,12 @@ import {
   Group as GroupIcon,
 } from "@mui/icons-material";
 import { toast } from "react-toastify";
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../firebase/config";
+import { useAuth } from "../../../contexts/AuthContext";
 
 const UserManagement = () => {
+  const { isSuperuser, currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,10 +60,12 @@ const UserManagement = () => {
 
   useEffect(() => {
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     applyFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [users, searchQuery, roleFilter, memberFilter]);
 
   const fetchUsers = async () => {
@@ -136,11 +141,14 @@ const UserManagement = () => {
 
     try {
       setLoading(true);
-      const userRef = doc(db, "users", editingUser.id);
-      await updateDoc(userRef, {
-        userRole: editingUser.userRole,
-        is_member: editingUser.is_member,
-      });
+      const original = users.find((u) => u.id === editingUser.id) || {};
+      const updates = { is_member: !!editingUser.is_member };
+      if (updates.is_member && !original.is_member) updates.membershipDate = serverTimestamp();
+      // Only Superusers may change roles (enforced by the security rules too).
+      if (isSuperuser && (editingUser.userRole || "User") !== (original.userRole || "User")) {
+        updates.userRole = editingUser.userRole;
+      }
+      await updateDoc(doc(db, "users", editingUser.id), updates);
       toast.success("User updated successfully!");
       handleCloseDialog();
       fetchUsers();
@@ -153,7 +161,11 @@ const UserManagement = () => {
   };
 
   const handleDeleteUser = async (userId, username) => {
-    if (!window.confirm(`Are you sure you want to delete user "${username}"? This action cannot be undone.`)) {
+    if (
+      !window.confirm(
+        `Delete the profile of "${username}"? This removes them from the directory but does not delete their sign-in account (do that in the Firebase console).`
+      )
+    ) {
       return;
     }
 
@@ -278,7 +290,7 @@ const UserManagement = () => {
             <IconButton
               size="small"
               onClick={() => handleDeleteUser(params.row.id, params.row.username)}
-              disabled={params.row.userRole === "Superuser"}
+              disabled={params.row.userRole === "Superuser" || params.row.id === currentUser?.uid}
             >
               <DeleteIcon />
             </IconButton>
@@ -301,7 +313,7 @@ const UserManagement = () => {
       {/* Statistics Cards */}
       <Grid container spacing={2} mb={3}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}>
+          <Card sx={{ background: "linear-gradient(160deg, #17212E 0%, #0E1620 100%)" }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
@@ -318,7 +330,7 @@ const UserManagement = () => {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)" }}>
+          <Card sx={{ background: "linear-gradient(135deg, #E8851F 0%, #D9611A 100%)" }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
@@ -335,7 +347,7 @@ const UserManagement = () => {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)" }}>
+          <Card sx={{ background: "linear-gradient(135deg, #2BA6DE 0%, #1F7FB0 100%)" }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
@@ -352,7 +364,7 @@ const UserManagement = () => {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)" }}>
+          <Card sx={{ background: "linear-gradient(135deg, #1F5B3F 0%, #143D2A 100%)" }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
@@ -446,7 +458,7 @@ const UserManagement = () => {
               disabled
               fullWidth
             />
-            <FormControl fullWidth>
+            <FormControl fullWidth disabled={!isSuperuser}>
               <InputLabel>Role</InputLabel>
               <Select
                 value={editingUser?.userRole || "User"}
@@ -459,6 +471,7 @@ const UserManagement = () => {
                 <MenuItem value="Admin">Admin</MenuItem>
                 <MenuItem value="Superuser">Superuser</MenuItem>
               </Select>
+              {!isSuperuser && <FormHelperText>Only a Superuser can change roles.</FormHelperText>}
             </FormControl>
             <FormControl fullWidth>
               <InputLabel>Membership Status</InputLabel>

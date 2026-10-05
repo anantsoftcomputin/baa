@@ -15,21 +15,40 @@ import {
   increment,
   arrayUnion,
   arrayRemove,
-  onSnapshot
+  onSnapshot,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "./config";
+import { slugify } from "../utils/format";
+
+const withId = (snap) => ({ id: snap.id, ...snap.data() });
+const listOf = (querySnapshot) => querySnapshot.docs.map(withId);
+
+/** Firestore `in` queries accept at most 30 values; split larger lists. */
+const chunk = (items, size = 30) => {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+};
+
+const toMillis = (value) => {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (value.seconds) return value.seconds * 1000;
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? 0 : t;
+};
+
+const byNewest = (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt);
 
 // ==================== USER PROFILES ====================
 
-/**
- * Create user profile
- */
 export const createUserProfile = async (userId, profileData) => {
   try {
     await setDoc(doc(db, "users", userId), {
       ...profileData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -38,18 +57,10 @@ export const createUserProfile = async (userId, profileData) => {
   }
 };
 
-/**
- * Get user profile
- */
 export const getUserProfile = async (userId) => {
   try {
-    const docRef = doc(db, "users", userId);
-    const docSnap = await getDoc(docRef);
-    
-    if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() };
-    }
-    return null;
+    const docSnap = await getDoc(doc(db, "users", userId));
+    return docSnap.exists() ? withId(docSnap) : null;
   } catch (error) {
     console.error("Error getting user profile:", error);
     throw error;
@@ -57,14 +68,23 @@ export const getUserProfile = async (userId) => {
 };
 
 /**
- * Update user profile
+ * Update the signed-in user's own profile. Privileged fields (role, membership,
+ * followers) are stripped here and rejected by the security rules anyway.
  */
 export const updateUserProfile = async (userId, updates) => {
   try {
-    const docRef = doc(db, "users", userId);
-    await updateDoc(docRef, {
-      ...updates,
-      updatedAt: serverTimestamp()
+    const {
+      userRole,
+      is_member,
+      membershipDate,
+      paymentDetails,
+      followers,
+      id,
+      ...safeUpdates
+    } = updates;
+    await updateDoc(doc(db, "users", userId), {
+      ...safeUpdates,
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -73,53 +93,60 @@ export const updateUserProfile = async (userId, updates) => {
   }
 };
 
+/** Batch year is stored as `batchyear`; older profiles used `school_graduation_year`. */
+export const getBatchYear = (user) => user?.batchyear ?? user?.school_graduation_year ?? null;
+
 /**
- * Get users by graduation year
+ * Users in a given batch year, or everyone when no year is given.
+ * Matches both numeric and string years, and the legacy field name.
  */
 export const getUsersByYear = async (year) => {
   try {
     const usersRef = collection(db, "users");
-    let q;
-    
-    if (year) {
-      q = query(usersRef, where("school_graduation_year", "==", parseInt(year)));
-    } else {
-      q = query(usersRef);
+    if (!year) {
+      return listOf(await getDocs(usersRef));
     }
-    
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const n = parseInt(year, 10);
+    const values = [n, String(n)];
+    const [current, legacy] = await Promise.all([
+      getDocs(query(usersRef, where("batchyear", "in", values))),
+      getDocs(query(usersRef, where("school_graduation_year", "in", values))),
+    ]);
+
+    const seen = new Map();
+    [...listOf(current), ...listOf(legacy)].forEach((u) => seen.set(u.id, u));
+    return [...seen.values()];
   } catch (error) {
     console.error("Error getting users by year:", error);
     throw error;
   }
 };
 
+export const getRecentUsers = async (limitCount = 12) => {
+  try {
+    const q = query(collection(db, "users"), limit(limitCount));
+    return listOf(await getDocs(q));
+  } catch (error) {
+    console.error("Error getting users:", error);
+    throw error;
+  }
+};
+
 /**
- * Follow/Unfollow user
+ * Follow / unfollow. Both sides are written atomically; the security rules let a
+ * user edit someone else's `followers` only to add or remove themselves.
  */
 export const toggleFollow = async (currentUserId, targetUserId, isFollowing) => {
+  if (!currentUserId || !targetUserId || currentUserId === targetUserId) {
+    throw new Error("Invalid follow request");
+  }
   try {
-    const currentUserRef = doc(db, "users", currentUserId);
-    const targetUserRef = doc(db, "users", targetUserId);
-
-    if (isFollowing) {
-      // Unfollow
-      await updateDoc(currentUserRef, {
-        following: arrayRemove(targetUserId)
-      });
-      await updateDoc(targetUserRef, {
-        followers: arrayRemove(currentUserId)
-      });
-    } else {
-      // Follow
-      await updateDoc(currentUserRef, {
-        following: arrayUnion(targetUserId)
-      });
-      await updateDoc(targetUserRef, {
-        followers: arrayUnion(currentUserId)
-      });
-    }
+    const batch = writeBatch(db);
+    const op = isFollowing ? arrayRemove : arrayUnion;
+    batch.update(doc(db, "users", currentUserId), { following: op(targetUserId) });
+    batch.update(doc(db, "users", targetUserId), { followers: op(currentUserId) });
+    await batch.commit();
     return { success: true };
   } catch (error) {
     console.error("Error toggling follow:", error);
@@ -130,18 +157,18 @@ export const toggleFollow = async (currentUserId, targetUserId, isFollowing) => 
 // ==================== POSTS ====================
 
 /**
- * Create post
+ * Create a post. `user_id` is the author's uid (the security rules check it).
+ * `username` / `userPhoto` are denormalised so the feed can render without extra reads.
  */
 export const createPost = async (postData) => {
   try {
-    const postsRef = collection(db, "posts");
-    const docRef = await addDoc(postsRef, {
+    const docRef = await addDoc(collection(db, "posts"), {
       ...postData,
       likesCount: 0,
       commentsCount: 0,
       sharesCount: 0,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -150,76 +177,98 @@ export const createPost = async (postData) => {
   }
 };
 
-/**
- * Get all posts
- */
 export const getAllPosts = async (limitCount = 50) => {
   try {
-    const postsRef = collection(db, "posts");
-    const q = query(postsRef, orderBy("createdAt", "desc"), limit(limitCount));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(limitCount));
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting posts:", error);
     throw error;
   }
 };
 
-/**
- * Get posts by user
- */
 export const getPostsByUser = async (userId) => {
   try {
-    const postsRef = collection(db, "posts");
-    const q = query(postsRef, where("author", "==", userId), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const q = query(
+      collection(db, "posts"),
+      where("user_id", "==", userId),
+      orderBy("createdAt", "desc")
+    );
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting posts by user:", error);
     throw error;
   }
 };
 
-/**
- * Get popular posts
- */
+/** Posts written by any of the given users, newest first. */
+export const getPostsByUsers = async (userIds = [], limitCount = 50) => {
+  if (!userIds.length) return [];
+  try {
+    const batches = await Promise.all(
+      chunk(userIds).map((ids) =>
+        getDocs(
+          query(
+            collection(db, "posts"),
+            where("user_id", "in", ids),
+            orderBy("createdAt", "desc"),
+            limit(limitCount)
+          )
+        )
+      )
+    );
+    return batches.flatMap(listOf).sort(byNewest).slice(0, limitCount);
+  } catch (error) {
+    console.error("Error getting posts by followed users:", error);
+    throw error;
+  }
+};
+
 export const getPopularPosts = async (limitCount = 20) => {
   try {
-    const postsRef = collection(db, "posts");
-    const q = query(postsRef, orderBy("likesCount", "desc"), limit(limitCount));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const q = query(collection(db, "posts"), orderBy("likesCount", "desc"), limit(limitCount));
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting popular posts:", error);
     throw error;
   }
 };
 
-/**
- * Toggle like on post
- */
+export const updatePost = async (postId, content) => {
+  try {
+    await updateDoc(doc(db, "posts", postId), { content, updatedAt: serverTimestamp() });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating post:", error);
+    throw error;
+  }
+};
+
+export const deletePost = async (postId) => {
+  try {
+    await deleteDoc(doc(db, "posts", postId));
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting post:", error);
+    throw error;
+  }
+};
+
+/** Like / unlike. The like document id is `${postId}_${userId}`. */
 export const toggleLike = async (postId, userId, isLiked) => {
   try {
+    const batch = writeBatch(db);
     const postRef = doc(db, "posts", postId);
     const likeRef = doc(db, "likes", `${postId}_${userId}`);
 
     if (isLiked) {
-      // Unlike
-      await deleteDoc(likeRef);
-      await updateDoc(postRef, {
-        likesCount: increment(-1)
-      });
+      batch.delete(likeRef);
+      batch.update(postRef, { likesCount: increment(-1) });
     } else {
-      // Like
-      await setDoc(likeRef, {
-        postId: postId,
-        userId: userId,
-        createdAt: serverTimestamp()
-      });
-      await updateDoc(postRef, {
-        likesCount: increment(1)
-      });
+      batch.set(likeRef, { postId, userId, createdAt: serverTimestamp() });
+      batch.update(postRef, { likesCount: increment(1) });
     }
+    await batch.commit();
     return { success: true };
   } catch (error) {
     console.error("Error toggling like:", error);
@@ -227,13 +276,9 @@ export const toggleLike = async (postId, userId, isLiked) => {
   }
 };
 
-/**
- * Check if user liked post
- */
 export const checkUserLiked = async (postId, userId) => {
   try {
-    const likeRef = doc(db, "likes", `${postId}_${userId}`);
-    const likeSnap = await getDoc(likeRef);
+    const likeSnap = await getDoc(doc(db, "likes", `${postId}_${userId}`));
     return likeSnap.exists();
   } catch (error) {
     console.error("Error checking like:", error);
@@ -241,29 +286,18 @@ export const checkUserLiked = async (postId, userId) => {
   }
 };
 
-/**
- * Add comment to post
- */
-export const addComment = async (postId, userId, content, username, parentCommentId = null) => {
+export const addComment = async (postId, userId, content, username, parentCommentId = null, userPhoto = null) => {
   try {
-    const commentsRef = collection(db, "comments");
-    const commentData = {
-      postId: postId,
-      userId: userId,
-      username: username,
-      content: content,
+    const docRef = await addDoc(collection(db, "comments"), {
+      postId,
+      userId,
+      username,
+      userPhoto,
+      content,
       createdAt: serverTimestamp(),
-      parentCommentId: parentCommentId
-    };
-    
-    const docRef = await addDoc(commentsRef, commentData);
-
-    // Increment comment count
-    const postRef = doc(db, "posts", postId);
-    await updateDoc(postRef, {
-      commentsCount: increment(1)
+      parentCommentId,
     });
-
+    await updateDoc(doc(db, "posts", postId), { commentsCount: increment(1) });
     return { success: true, id: docRef.id };
   } catch (error) {
     console.error("Error adding comment:", error);
@@ -271,40 +305,40 @@ export const addComment = async (postId, userId, content, username, parentCommen
   }
 };
 
-/**
- * Get comments for post
- */
+export const deleteComment = async (commentId, postId) => {
+  try {
+    await deleteDoc(doc(db, "comments", commentId));
+    await updateDoc(doc(db, "posts", postId), { commentsCount: increment(-1) });
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting comment:", error);
+    throw error;
+  }
+};
+
 export const getComments = async (postId) => {
   try {
-    const commentsRef = collection(db, "comments");
-    const q = query(commentsRef, where("postId", "==", postId), orderBy("createdAt", "asc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const q = query(
+      collection(db, "comments"),
+      where("postId", "==", postId),
+      orderBy("createdAt", "asc")
+    );
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting comments:", error);
     throw error;
   }
 };
 
-/**
- * Share post
- */
 export const sharePost = async (postId, userId, platform) => {
   try {
-    const sharesRef = collection(db, "shares");
-    await addDoc(sharesRef, {
+    await addDoc(collection(db, "shares"), {
       postId,
       userId,
       platform,
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
     });
-    
-    // Increment share count
-    const postRef = doc(db, "posts", postId);
-    await updateDoc(postRef, {
-      sharesCount: increment(1)
-    });
-    
+    await updateDoc(doc(db, "posts", postId), { sharesCount: increment(1) });
     return true;
   } catch (error) {
     console.error("Error sharing post:", error);
@@ -314,16 +348,12 @@ export const sharePost = async (postId, userId, platform) => {
 
 // ==================== EVENTS ====================
 
-/**
- * Create event
- */
 export const createEvent = async (eventData) => {
   try {
-    const eventsRef = collection(db, "events");
-    const docRef = await addDoc(eventsRef, {
+    const docRef = await addDoc(collection(db, "events"), {
       ...eventData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -332,33 +362,20 @@ export const createEvent = async (eventData) => {
   }
 };
 
-/**
- * Get all events
- */
 export const getAllEvents = async () => {
   try {
-    const eventsRef = collection(db, "events");
-    const q = query(eventsRef, orderBy("start_date", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const q = query(collection(db, "events"), orderBy("start_date", "desc"));
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting events:", error);
     throw error;
   }
 };
 
-/**
- * Get event by ID
- */
 export const getEventById = async (eventId) => {
   try {
-    const docRef = doc(db, "events", eventId);
-    const docSnap = await getDoc(docRef);
-    
-    if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() };
-    }
-    return null;
+    const docSnap = await getDoc(doc(db, "events", eventId));
+    return docSnap.exists() ? withId(docSnap) : null;
   } catch (error) {
     console.error("Error getting event:", error);
     throw error;
@@ -366,14 +383,27 @@ export const getEventById = async (eventId) => {
 };
 
 /**
- * Update event
+ * Resolve an event from a URL segment, which may be a document id or a name slug
+ * (older links used `/events/<slug>` with the id passed in router state).
  */
+export const findEvent = async ({ id, slug }) => {
+  const candidates = [id, slug].filter(Boolean);
+  for (const candidate of candidates) {
+    if (/^[A-Za-z0-9_-]{1,128}$/.test(candidate)) {
+      const byId = await getEventById(candidate).catch(() => null);
+      if (byId) return byId;
+    }
+  }
+  if (!slug) return null;
+  const events = await getAllEvents();
+  return events.find((e) => slugify(e.name || e.title) === slugify(slug)) || null;
+};
+
 export const updateEvent = async (eventId, updates) => {
   try {
-    const docRef = doc(db, "events", eventId);
-    await updateDoc(docRef, {
+    await updateDoc(doc(db, "events", eventId), {
       ...updates,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -382,9 +412,6 @@ export const updateEvent = async (eventId, updates) => {
   }
 };
 
-/**
- * Delete event
- */
 export const deleteEvent = async (eventId) => {
   try {
     await deleteDoc(doc(db, "events", eventId));
@@ -395,18 +422,96 @@ export const deleteEvent = async (eventId) => {
   }
 };
 
-// ==================== INITIATIVES ====================
+// ==================== EVENT REGISTRATIONS ====================
+
+const toAmount = (value) => {
+  const n = typeof value === "number" ? value : parseFloat(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+/** Total in rupees for one alumnus plus guests. Mirrors functions/payments.js. */
+export const eventRegistrationTotal = (event, guestCount = 0) => {
+  const guests = Math.max(0, parseInt(guestCount, 10) || 0);
+  return toAmount(event?.amount) + toAmount(event?.guest_amount) * guests;
+};
+
+export const isEventFree = (event) => eventRegistrationTotal(event, 0) === 0 && toAmount(event?.guest_amount) === 0;
+
+export const registrationId = (eventId, userId) => `${eventId}_${userId}`;
+
+export const getMyRegistration = async (eventId, userId) => {
+  try {
+    const snap = await getDoc(doc(db, "eventRegistrations", registrationId(eventId, userId)));
+    return snap.exists() ? withId(snap) : null;
+  } catch (error) {
+    console.error("Error getting registration:", error);
+    return null;
+  }
+};
+
+export const getMyRegistrations = async (userId) => {
+  try {
+    const q = query(collection(db, "eventRegistrations"), where("userId", "==", userId));
+    return listOf(await getDocs(q)).sort(byNewest);
+  } catch (error) {
+    console.error("Error getting registrations:", error);
+    return [];
+  }
+};
 
 /**
- * Create initiative
+ * Register the user for an event. Free events are confirmed immediately; paid
+ * events stay `pending_payment` until the payment Cloud Function confirms them.
  */
+export const registerForEvent = async (event, user, { guests = [] } = {}) => {
+  const cleanGuests = guests
+    .map((g) => ({ name: (g.name || "").trim(), phone: (g.phone || "").trim() }))
+    .filter((g) => g.name);
+  const total = eventRegistrationTotal(event, cleanGuests.length);
+  const free = total === 0;
+  const id = registrationId(event.id, user.uid);
+
+  await setDoc(doc(db, "eventRegistrations", id), {
+    eventId: event.id,
+    eventName: event.name || event.title || "",
+    eventDate: event.start_date || null,
+    userId: user.uid,
+    username: user.username || "",
+    email: user.email || "",
+    guests: cleanGuests,
+    guest_count: cleanGuests.length,
+    total_amount: total,
+    status: free ? "confirmed" : "pending_payment",
+    payment_status: free ? "free" : "pending",
+    createdAt: serverTimestamp(),
+  });
+  return { id, total, free };
+};
+
+export const cancelRegistration = async (id) => {
+  await deleteDoc(doc(db, "eventRegistrations", id));
+  return { success: true };
+};
+
+/** Admin only: everyone registered for an event. */
+export const getEventRegistrations = async (eventId) => {
+  try {
+    const q = query(collection(db, "eventRegistrations"), where("eventId", "==", eventId));
+    return listOf(await getDocs(q)).sort(byNewest);
+  } catch (error) {
+    console.error("Error getting event registrations:", error);
+    throw error;
+  }
+};
+
+// ==================== INITIATIVES ====================
+
 export const createInitiative = async (initiativeData) => {
   try {
-    const initiativesRef = collection(db, "initiatives");
-    const docRef = await addDoc(initiativesRef, {
+    const docRef = await addDoc(collection(db, "initiatives"), {
       ...initiativeData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -415,15 +520,11 @@ export const createInitiative = async (initiativeData) => {
   }
 };
 
-/**
- * Update initiative
- */
 export const updateInitiative = async (id, initiativeData) => {
   try {
-    const docRef = doc(db, "initiatives", id);
-    await updateDoc(docRef, {
+    await updateDoc(doc(db, "initiatives", id), {
       ...initiativeData,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -432,9 +533,6 @@ export const updateInitiative = async (id, initiativeData) => {
   }
 };
 
-/**
- * Delete initiative
- */
 export const deleteInitiative = async (id) => {
   try {
     await deleteDoc(doc(db, "initiatives", id));
@@ -445,51 +543,55 @@ export const deleteInitiative = async (id) => {
   }
 };
 
-/**
- * Get all initiatives
- */
 export const getAllInitiatives = async () => {
   try {
-    const initiativesRef = collection(db, "initiatives");
-    const q = query(initiativesRef, orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const q = query(collection(db, "initiatives"), orderBy("createdAt", "desc"));
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting initiatives:", error);
     throw error;
   }
 };
 
+export const getInitiativeById = async (id) => {
+  try {
+    const snap = await getDoc(doc(db, "initiatives", id));
+    return snap.exists() ? withId(snap) : null;
+  } catch (error) {
+    console.error("Error getting initiative:", error);
+    throw error;
+  }
+};
+
+export const getMyContributions = async (userId) => {
+  try {
+    const q = query(collection(db, "contributions"), where("userId", "==", userId));
+    return listOf(await getDocs(q)).sort(byNewest);
+  } catch (error) {
+    console.error("Error getting contributions:", error);
+    return [];
+  }
+};
+
 // ==================== WEBSITE CONTENT ====================
 
-/**
- * Get website content (about us, achievements, etc.)
- */
 export const getWebsiteContent = async (contentType) => {
   try {
-    const docRef = doc(db, "websiteContent", contentType);
-    const docSnap = await getDoc(docRef);
-    
-    if (docSnap.exists()) {
-      return docSnap.data();
-    }
-    return null;
+    const docSnap = await getDoc(doc(db, "websiteContent", contentType));
+    return docSnap.exists() ? docSnap.data() : null;
   } catch (error) {
     console.error("Error getting website content:", error);
     throw error;
   }
 };
 
-/**
- * Update website content
- */
 export const updateWebsiteContent = async (contentType, data) => {
   try {
-    const docRef = doc(db, "websiteContent", contentType);
-    await setDoc(docRef, {
-      ...data,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+    await setDoc(
+      doc(db, "websiteContent", contentType),
+      { ...data, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
     return { success: true };
   } catch (error) {
     console.error("Error updating website content:", error);
@@ -497,30 +599,32 @@ export const updateWebsiteContent = async (contentType, data) => {
   }
 };
 
-/**
- * Get all testimonials
- */
+export const DEFAULT_MEMBERSHIP_FEE = 2500;
+
+/** Membership settings (`websiteContent/membership`). The fee is enforced server-side. */
+export const getMembershipSettings = async () => {
+  const data = await getWebsiteContent("membership").catch(() => null);
+  return {
+    amount: toAmount(data?.amount) || DEFAULT_MEMBERSHIP_FEE,
+    benefits: Array.isArray(data?.benefits) ? data.benefits : null,
+  };
+};
+
 export const getTestimonials = async () => {
   try {
-    const testimonialsRef = collection(db, "testimonials");
-    const querySnapshot = await getDocs(testimonialsRef);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return listOf(await getDocs(collection(db, "testimonials")));
   } catch (error) {
     console.error("Error getting testimonials:", error);
     throw error;
   }
 };
 
-/**
- * Add testimonial
- */
 export const addTestimonial = async (testimonialData) => {
   try {
-    const testimonialsRef = collection(db, "testimonials");
-    const docRef = await addDoc(testimonialsRef, {
+    const docRef = await addDoc(collection(db, "testimonials"), {
       ...testimonialData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -529,15 +633,11 @@ export const addTestimonial = async (testimonialData) => {
   }
 };
 
-/**
- * Update testimonial
- */
 export const updateTestimonial = async (id, testimonialData) => {
   try {
-    const docRef = doc(db, "testimonials", id);
-    await updateDoc(docRef, {
+    await updateDoc(doc(db, "testimonials", id), {
       ...testimonialData,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -546,9 +646,6 @@ export const updateTestimonial = async (id, testimonialData) => {
   }
 };
 
-/**
- * Delete testimonial
- */
 export const deleteTestimonial = async (id) => {
   try {
     await deleteDoc(doc(db, "testimonials", id));
@@ -559,31 +656,23 @@ export const deleteTestimonial = async (id) => {
   }
 };
 
-/**
- * Get all committee members
- */
 export const getCommitteeMembers = async () => {
   try {
-    const committeeRef = collection(db, "committee");
-    const q = query(committeeRef, orderBy("order", "asc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Members added without an `order` field would be dropped by orderBy(), so sort client-side.
+    const members = listOf(await getDocs(collection(db, "committee")));
+    return members.sort((a, b) => (Number(a.order) || 999) - (Number(b.order) || 999));
   } catch (error) {
     console.error("Error getting committee members:", error);
     throw error;
   }
 };
 
-/**
- * Add committee member
- */
 export const addCommitteeMember = async (memberData) => {
   try {
-    const committeeRef = collection(db, "committee");
-    const docRef = await addDoc(committeeRef, {
+    const docRef = await addDoc(collection(db, "committee"), {
       ...memberData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -592,15 +681,11 @@ export const addCommitteeMember = async (memberData) => {
   }
 };
 
-/**
- * Update committee member
- */
 export const updateCommitteeMember = async (id, memberData) => {
   try {
-    const docRef = doc(db, "committee", id);
-    await updateDoc(docRef, {
+    await updateDoc(doc(db, "committee", id), {
       ...memberData,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -609,9 +694,6 @@ export const updateCommitteeMember = async (id, memberData) => {
   }
 };
 
-/**
- * Delete committee member
- */
 export const deleteCommitteeMember = async (id) => {
   try {
     await deleteDoc(doc(db, "committee", id));
@@ -622,30 +704,21 @@ export const deleteCommitteeMember = async (id) => {
   }
 };
 
-/**
- * Get all achievements
- */
 export const getAchievements = async () => {
   try {
-    const achievementsRef = collection(db, "achievements");
-    const querySnapshot = await getDocs(achievementsRef);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return listOf(await getDocs(collection(db, "achievements")));
   } catch (error) {
     console.error("Error getting achievements:", error);
     throw error;
   }
 };
 
-/**
- * Add achievement
- */
 export const addAchievement = async (achievementData) => {
   try {
-    const achievementsRef = collection(db, "achievements");
-    const docRef = await addDoc(achievementsRef, {
+    const docRef = await addDoc(collection(db, "achievements"), {
       ...achievementData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -654,15 +727,11 @@ export const addAchievement = async (achievementData) => {
   }
 };
 
-/**
- * Update achievement
- */
 export const updateAchievement = async (id, achievementData) => {
   try {
-    const docRef = doc(db, "achievements", id);
-    await updateDoc(docRef, {
+    await updateDoc(doc(db, "achievements", id), {
       ...achievementData,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -671,9 +740,6 @@ export const updateAchievement = async (id, achievementData) => {
   }
 };
 
-/**
- * Delete achievement
- */
 export const deleteAchievement = async (id) => {
   try {
     await deleteDoc(doc(db, "achievements", id));
@@ -684,31 +750,32 @@ export const deleteAchievement = async (id) => {
   }
 };
 
-/**
- * Get all blogs
- */
 export const getBlogs = async () => {
   try {
-    const blogsRef = collection(db, "blogs");
-    const q = query(blogsRef, orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const q = query(collection(db, "blogs"), orderBy("createdAt", "desc"));
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting blogs:", error);
     throw error;
   }
 };
 
-/**
- * Add blog
- */
+export const getBlogById = async (id) => {
+  try {
+    const snap = await getDoc(doc(db, "blogs", id));
+    return snap.exists() ? withId(snap) : null;
+  } catch (error) {
+    console.error("Error getting blog:", error);
+    throw error;
+  }
+};
+
 export const addBlog = async (blogData) => {
   try {
-    const blogsRef = collection(db, "blogs");
-    const docRef = await addDoc(blogsRef, {
+    const docRef = await addDoc(collection(db, "blogs"), {
       ...blogData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -717,15 +784,11 @@ export const addBlog = async (blogData) => {
   }
 };
 
-/**
- * Update blog
- */
 export const updateBlog = async (id, blogData) => {
   try {
-    const docRef = doc(db, "blogs", id);
-    await updateDoc(docRef, {
+    await updateDoc(doc(db, "blogs", id), {
       ...blogData,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -734,9 +797,6 @@ export const updateBlog = async (id, blogData) => {
   }
 };
 
-/**
- * Delete blog
- */
 export const deleteBlog = async (id) => {
   try {
     await deleteDoc(doc(db, "blogs", id));
@@ -747,30 +807,21 @@ export const deleteBlog = async (id) => {
   }
 };
 
-/**
- * Get gallery images
- */
 export const getGalleryImages = async () => {
   try {
-    const galleryRef = collection(db, "gallery");
-    const querySnapshot = await getDocs(galleryRef);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return listOf(await getDocs(collection(db, "gallery"))).sort(byNewest);
   } catch (error) {
     console.error("Error getting gallery images:", error);
     throw error;
   }
 };
 
-/**
- * Add gallery image
- */
 export const addGalleryImage = async (imageData) => {
   try {
-    const galleryRef = collection(db, "gallery");
-    const docRef = await addDoc(galleryRef, {
+    const docRef = await addDoc(collection(db, "gallery"), {
       ...imageData,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true, id: docRef.id };
   } catch (error) {
@@ -779,15 +830,11 @@ export const addGalleryImage = async (imageData) => {
   }
 };
 
-/**
- * Update gallery image
- */
 export const updateGalleryImage = async (id, imageData) => {
   try {
-    const docRef = doc(db, "gallery", id);
-    await updateDoc(docRef, {
+    await updateDoc(doc(db, "gallery", id), {
       ...imageData,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -796,9 +843,6 @@ export const updateGalleryImage = async (id, imageData) => {
   }
 };
 
-/**
- * Delete gallery image
- */
 export const deleteGalleryImage = async (id) => {
   try {
     await deleteDoc(doc(db, "gallery", id));
@@ -809,15 +853,9 @@ export const deleteGalleryImage = async (id) => {
   }
 };
 
-/**
- * Get hero images for landing page
- */
 export const getHeroImages = async () => {
   try {
-    // Get from websiteContent document
-    const docRef = doc(db, "websiteContent", "heroImages");
-    const docSnap = await getDoc(docRef);
-    
+    const docSnap = await getDoc(doc(db, "websiteContent", "heroImages"));
     if (docSnap.exists() && docSnap.data().images) {
       return docSnap.data().images;
     }
@@ -828,16 +866,13 @@ export const getHeroImages = async () => {
   }
 };
 
-/**
- * Submit contact form
- */
 export const submitContactForm = async (formData) => {
   try {
     await addDoc(collection(db, "contactSubmissions"), {
       ...formData,
       createdAt: serverTimestamp(),
       status: "new",
-      group: formData.group || "general"
+      group: formData.group || "general",
     });
     return { success: true };
   } catch (error) {
@@ -846,32 +881,21 @@ export const submitContactForm = async (formData) => {
   }
 };
 
-/**
- * Get all contact submissions
- */
 export const getContactSubmissions = async () => {
   try {
     const q = query(collection(db, "contactSubmissions"), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    return listOf(await getDocs(q));
   } catch (error) {
     console.error("Error getting contact submissions:", error);
     throw error;
   }
 };
 
-/**
- * Update contact submission status
- */
 export const updateContactStatus = async (contactId, status) => {
   try {
-    const contactRef = doc(db, "contactSubmissions", contactId);
-    await updateDoc(contactRef, {
+    await updateDoc(doc(db, "contactSubmissions", contactId), {
       status,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
@@ -880,9 +904,6 @@ export const updateContactStatus = async (contactId, status) => {
   }
 };
 
-/**
- * Delete contact submission
- */
 export const deleteContactSubmission = async (contactId) => {
   try {
     await deleteDoc(doc(db, "contactSubmissions", contactId));
@@ -893,15 +914,12 @@ export const deleteContactSubmission = async (contactId) => {
   }
 };
 
-/**
- * Submit feedback
- */
 export const submitFeedback = async (feedbackData) => {
   try {
     await addDoc(collection(db, "feedback"), {
       ...feedbackData,
       createdAt: serverTimestamp(),
-      status: "new"
+      status: "new",
     });
     return { success: true };
   } catch (error) {
@@ -910,31 +928,33 @@ export const submitFeedback = async (feedbackData) => {
   }
 };
 
+export const getFeedback = async () => {
+  try {
+    const q = query(collection(db, "feedback"), orderBy("createdAt", "desc"));
+    return listOf(await getDocs(q));
+  } catch (error) {
+    console.error("Error getting feedback:", error);
+    throw error;
+  }
+};
+
+export const deleteFeedback = async (id) => {
+  await deleteDoc(doc(db, "feedback", id));
+  return { success: true };
+};
+
 // ==================== MEMBERSHIP ====================
 
 /**
- * Update membership status
+ * Admin-only manual membership grant (e.g. for an offline payment).
+ * Online payments are recorded by the `verifyPayment` Cloud Function.
  */
-export const updateMembershipStatus = async (userId, paymentData) => {
+export const updateMembershipStatus = async (userId, isMember = true) => {
   try {
-    const userRef = doc(db, "users", userId);
-    await updateDoc(userRef, {
-      is_member: true,
-      membershipDate: serverTimestamp(),
-      paymentDetails: paymentData
+    await updateDoc(doc(db, "users", userId), {
+      is_member: !!isMember,
+      membershipDate: isMember ? serverTimestamp() : null,
     });
-
-    // Store payment record
-    const paymentsRef = collection(db, "payments");
-    await addDoc(paymentsRef, {
-      userId: userId,
-      amount: paymentData.amount,
-      paymentId: paymentData.paymentId,
-      orderId: paymentData.orderId,
-      status: "completed",
-      createdAt: serverTimestamp()
-    });
-
     return { success: true };
   } catch (error) {
     console.error("Error updating membership:", error);
@@ -942,9 +962,6 @@ export const updateMembershipStatus = async (userId, paymentData) => {
   }
 };
 
-/**
- * Check membership status
- */
 export const checkMembershipStatus = async (userId) => {
   try {
     const userProfile = await getUserProfile(userId);
@@ -957,69 +974,61 @@ export const checkMembershipStatus = async (userId) => {
 
 // ==================== REAL-TIME LISTENERS ====================
 
-/**
- * Listen to posts in real-time
- */
 export const subscribeToPosts = (callback) => {
-  const postsRef = collection(db, "posts");
-  const q = query(postsRef, orderBy("createdAt", "desc"), limit(50));
-  
-  return onSnapshot(q, (snapshot) => {
-    const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    callback(posts);
-  });
+  const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
+  return onSnapshot(q, (snapshot) => callback(listOf(snapshot)));
 };
 
-/**
- * Listen to user profile changes
- */
-export const subscribeToUserProfile = (userId, callback) => {
-  const docRef = doc(db, "users", userId);
-  
-  return onSnapshot(docRef, (doc) => {
-    if (doc.exists()) {
-      callback({ id: doc.id, ...doc.data() });
-    }
+export const subscribeToUserProfile = (userId, callback) =>
+  onSnapshot(doc(db, "users", userId), (snap) => {
+    if (snap.exists()) callback(withId(snap));
   });
-};
 
-export default {
-  // Users
+const firestoreApi = {
   createUserProfile,
   getUserProfile,
   updateUserProfile,
   getUsersByYear,
+  getRecentUsers,
   toggleFollow,
-  
-  // Posts
   createPost,
   getAllPosts,
   getPostsByUser,
+  getPostsByUsers,
   getPopularPosts,
+  updatePost,
+  deletePost,
   toggleLike,
   checkUserLiked,
   addComment,
+  deleteComment,
   getComments,
   sharePost,
-  
-  // Events
   createEvent,
   getAllEvents,
   getEventById,
+  findEvent,
   updateEvent,
   deleteEvent,
-  
-  // Initiatives
+  registerForEvent,
+  getMyRegistration,
+  getMyRegistrations,
+  cancelRegistration,
+  getEventRegistrations,
   createInitiative,
+  updateInitiative,
+  deleteInitiative,
   getAllInitiatives,
-  
-  // Website Content
+  getInitiativeById,
+  getMyContributions,
   getWebsiteContent,
   updateWebsiteContent,
+  getMembershipSettings,
   getTestimonials,
   getCommitteeMembers,
   getAchievements,
   getBlogs,
+  getBlogById,
   getGalleryImages,
   getHeroImages,
   submitContactForm,
@@ -1027,12 +1036,12 @@ export default {
   updateContactStatus,
   deleteContactSubmission,
   submitFeedback,
-  
-  // Membership
+  getFeedback,
+  deleteFeedback,
   updateMembershipStatus,
   checkMembershipStatus,
-  
-  // Real-time
   subscribeToPosts,
-  subscribeToUserProfile
+  subscribeToUserProfile,
 };
+
+export default firestoreApi;

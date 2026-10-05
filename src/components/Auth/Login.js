@@ -1,222 +1,145 @@
 import React, { useState } from "react";
-import {
-  TextField,
-  Button,
-  Typography,
-  Container,
-  Box,
-  Paper,
-  CircularProgress,
-  InputAdornment,
-  IconButton,
-  Divider,
-} from "@mui/material";
-import { useNavigate, Link } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { useFormik } from "formik";
 import * as Yup from "yup";
-import { loginWithEmail, loginWithGoogle } from "../../firebase/auth";
 import { toast } from "react-toastify";
+import { Alert, Box, Button, Divider, IconButton, InputAdornment, Link, Stack, TextField, Typography } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import GoogleIcon from "@mui/icons-material/Google";
-import LogoImg from "../images/BAA.png";
+import { loginWithEmail, loginWithGoogle, resendVerificationEmail } from "../../firebase/auth";
+import AuthLayout, { GoogleButton } from "./AuthLayout";
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || "/dashboard";
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [unverified, setUnverified] = useState(false);
 
   const formik = useFormik({
-    initialValues: {
-      email: "",
-      password: "",
-    },
+    initialValues: { email: "", password: "" },
     validationSchema: Yup.object({
-      email: Yup.string().email("Invalid email address").required("Email is required"),
+      email: Yup.string().email("Enter a valid email address").required("Email is required"),
       password: Yup.string().required("Password is required"),
     }),
     onSubmit: async (values) => {
       setIsLoading(true);
+      setUnverified(false);
       const result = await loginWithEmail(values.email, values.password);
-      
+      setIsLoading(false);
       if (result.success) {
         toast.success(result.message);
-        navigate("/dashboard");
+        navigate(from, { replace: true });
+      } else if (result.error === "email-not-verified") {
+        setUnverified(true);
       } else {
         toast.error(result.message);
       }
-      setIsLoading(false);
     },
   });
+
+  const handleResend = async () => {
+    setIsLoading(true);
+    const result = await resendVerificationEmail(formik.values.email, formik.values.password);
+    setIsLoading(false);
+    (result.success ? toast.success : toast.error)(result.message);
+  };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     const result = await loginWithGoogle();
-    
+    setIsLoading(false);
     if (result.success) {
       toast.success(result.message);
-      navigate("/dashboard");
+      navigate(result.isNewUser ? "/dashboard/updateProfile" : from, { replace: true });
     } else {
       toast.error(result.message);
     }
-    setIsLoading(false);
-  };
-
-  const handleClickShowPassword = () => setShowPassword(!showPassword);
-
-  const handleMouseDownPassword = (event) => {
-    event.preventDefault();
   };
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "100vh",
-        backgroundColor: (theme) => theme.palette.background.default,
-      }}
+    <AuthLayout
+      title="Sign in"
+      subtitle="Good to see you again. Sign in to your alumni account."
+      footer={
+        <Typography color="text.secondary">
+          New here?{" "}
+          <Link component={RouterLink} to="/register" sx={{ fontWeight: 700 }}>
+            Create an account
+          </Link>
+        </Typography>
+      }
     >
-      <Container component="main" maxWidth="xs">
-        <Paper
-          elevation={3}
-          sx={{
-            padding: 2,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            mb: 2,
-            boxShadow: "0 8px 24px rgba(251, 166, 69, 0.3)",
-            borderRadius: "16px",
-            background: "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(251,166,69,0.05) 100%)",
-            backdropFilter: "blur(10px)",
-            transition: "all 0.3s ease",
-            '&:hover': {
-              transform: "translateY(-4px)",
-              boxShadow: "0 12px 32px rgba(251, 166, 69, 0.4)",
-            }
-          }}
+      <GoogleButton onClick={handleGoogleLogin} disabled={isLoading} />
+      <Divider sx={{ my: 3, color: "text.secondary", fontSize: "0.85rem" }}>or with email</Divider>
+
+      {unverified && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2.5 }}
+          action={
+            <Button color="inherit" size="small" onClick={handleResend} disabled={isLoading}>
+              Resend
+            </Button>
+          }
         >
-          <Box
-            component="img"
-            src={LogoImg}
-            alt="BAA Logo"
-            sx={{
-              width: "150px",
-              height: "auto",
-              filter: "drop-shadow(0 4px 8px rgba(251, 166, 69, 0.2))",
-              transition: "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
-              '&:hover': {
-                transform: "scale(1.1) rotate(3deg)",
-                filter: "drop-shadow(0 8px 16px rgba(251, 166, 69, 0.4))",
-              }
+          Please verify your email first. Check your inbox (and spam) for the link.
+        </Alert>
+      )}
+
+      <Box component="form" noValidate onSubmit={formik.handleSubmit}>
+        <Stack spacing={2.25}>
+          <TextField
+            fullWidth
+            id="email"
+            label="Email address"
+            name="email"
+            autoComplete="email"
+            autoFocus
+            value={formik.values.email}
+            onChange={formik.handleChange}
+            onBlur={formik.handleBlur}
+            error={formik.touched.email && Boolean(formik.errors.email)}
+            helperText={formik.touched.email && formik.errors.email}
+          />
+          <TextField
+            fullWidth
+            name="password"
+            label="Password"
+            type={showPassword ? "text" : "password"}
+            id="password"
+            autoComplete="current-password"
+            value={formik.values.password}
+            onChange={formik.handleChange}
+            onBlur={formik.handleBlur}
+            error={formik.touched.password && Boolean(formik.errors.password)}
+            helperText={formik.touched.password && formik.errors.password}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((s) => !s)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
             }}
           />
-        </Paper>
-        <Paper
-          elevation={3}
-          sx={{
-            padding: 4,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            boxShadow: "0 4px 8px rgba(251, 166, 69, 0.5)",
-          }}
-        >
-          <Typography component="h1" variant="h5">
-            Log in
-          </Typography>
-          <Box
-            component="form"
-            onSubmit={formik.handleSubmit}
-            noValidate
-            sx={{ mt: 1, width: "100%" }}
-          >
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              autoComplete="email"
-              value={formik.values.email}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={formik.touched.email && Boolean(formik.errors.email)}
-              helperText={formik.touched.email && formik.errors.email}
-            />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Password"
-              type={showPassword ? "text" : "password"}
-              id="password"
-              autoComplete="current-password"
-              value={formik.values.password}
-              onChange={formik.handleChange}
-              onBlur={formik.handleBlur}
-              error={formik.touched.password && Boolean(formik.errors.password)}
-              helperText={formik.touched.password && formik.errors.password}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={handleClickShowPassword}
-                      onMouseDown={handleMouseDownPassword}
-                      edge="end"
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              disabled={isLoading}
-              sx={{ mt: 3, mb: 2 }}
-            >
-              {isLoading ? <CircularProgress size={24} /> : "Log In"}
-            </Button>
-
-            <Divider sx={{ my: 2 }}>OR</Divider>
-
-            <Button
-              fullWidth
-              variant="outlined"
-              startIcon={<GoogleIcon />}
-              onClick={handleGoogleLogin}
-              disabled={isLoading}
-              sx={{ mb: 2 }}
-            >
-              Sign in with Google
-            </Button>
-
-            <Box sx={{ textAlign: "center", mt: 2 }}>
-              <Link
-                to="/register"
-                style={{ textDecoration: "none", color: "inherit" }}
-              >
-                Don't have an account? Sign Up
-              </Link>
-            </Box>
-            <Box sx={{ textAlign: "center", mt: 1 }}>
-              <Link
-                to="/forgotPassword"
-                style={{ textDecoration: "none", color: "inherit" }}
-              >
-                Forgot Password?
-              </Link>
-            </Box>
-          </Box>
-        </Paper>
-      </Container>
-    </Box>
+        </Stack>
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1.25 }}>
+          <Link component={RouterLink} to="/forgotPassword" variant="body2" sx={{ fontWeight: 600 }}>
+            Forgot password?
+          </Link>
+        </Box>
+        <Button type="submit" fullWidth size="large" variant="contained" disabled={isLoading} sx={{ mt: 3 }}>
+          {isLoading ? "Signing in…" : "Sign in"}
+        </Button>
+      </Box>
+    </AuthLayout>
   );
 };
 

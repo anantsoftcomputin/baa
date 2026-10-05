@@ -8,7 +8,6 @@ import {
   DialogTitle,
   TextField,
   IconButton,
-  Paper,
   Typography,
   CircularProgress
 } from '@mui/material';
@@ -195,9 +194,9 @@ const AchievementsManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Paper sx={{ p: 3 }}>
+      <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5" fontWeight="bold">
+          <Typography variant="h5">
             Achievements
           </Typography>
           <Button
@@ -224,7 +223,7 @@ const AchievementsManager = () => {
             sx={{ minHeight: 400 }}
           />
         )}
-      </Paper>
+      </Box>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>

@@ -1,104 +1,115 @@
 import React, { useEffect, useState } from "react";
-import { Box } from "@mui/material";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
-import MainContent from "./MainContent/MainContent";
-import { getAllEvents } from "../../../firebase/firestore";
-import { getAllInitiatives } from "../../../firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import { Box, Button, Grid, Stack, Typography } from "@mui/material";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import Groups2RoundedIcon from "@mui/icons-material/Groups2Rounded";
+import { useAuth } from "../../../contexts/AuthContext";
+import { getAllEvents, getAllInitiatives, getBatchYear } from "../../../firebase/firestore";
+import Feed from "./MainContent/Feed";
+import DashboardEvents from "./MainContent/DashboardEvents";
+import DashboardInitiatives from "./MainContent/DashboardInitiatives";
+import DashboardUsers from "./MainContent/DashboardUsers";
+import { MembershipCard } from "./Membership/Membership";
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: "#fba645",
-      light: "#ffc166",
-      dark: "#e89539",
-    },
-    secondary: {
-      main: "#ff8c00",
-    },
-    background: {
-      default: "linear-gradient(135deg, #f5f7fa 0%, #fef9f5 100%)",
-      paper: "#ffffff",
-    },
-  },
-  typography: {
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif",
-  },
-  components: {
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: "16px",
-          boxShadow: "0 8px 24px rgba(251, 166, 69, 0.15)",
-          transition: "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
-          "&:hover": {
-            transform: "translateY(-8px)",
-            boxShadow: "0 16px 48px rgba(251, 166, 69, 0.25)",
-          },
-        },
-      },
-    },
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: "50px",
-          textTransform: "none",
-          fontWeight: 600,
-          padding: "10px 28px",
-        },
-        contained: {
-          boxShadow: "0 4px 12px rgba(251, 166, 69, 0.3)",
-          "&:hover": {
-            boxShadow: "0 8px 24px rgba(251, 166, 69, 0.4)",
-          },
-        },
-      },
-    },
-  },
-});
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+};
+
+/** Profile fields that make the directory useful; used for the completeness nudge. */
+const PROFILE_FIELDS = ["batchyear", "bio", "job_title", "company", "city", "phone_number", "profile_picture"];
 
 const Dashboard = () => {
-  const [count, setCount] = useState(0);
+  const navigate = useNavigate();
+  const { displayName, userProfile } = useAuth();
   const [eventsData, setEventsData] = useState([]);
   const [initiativesData, setInitiativesData] = useState([]);
 
-  const loginInfo = JSON.parse(localStorage.getItem("loginInfo"));
-  const userID = loginInfo?.userId;
-
   useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const events = await getAllEvents();
-        setEventsData(events || []);
-      } catch (error) {
-        console.error("Error fetching events:", error);
-      }
-    };
-    fetchEvents();
+    getAllEvents().then((e) => setEventsData(e || [])).catch(() => {});
+    getAllInitiatives().then((i) => setInitiativesData(i || [])).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const fetchInitiatives = async () => {
-      try {
-        const initiatives = await getAllInitiatives();
-        setInitiativesData(initiatives || []);
-      } catch (error) {
-        console.error("Error fetching initiatives:", error);
-      }
-    };
-    fetchInitiatives();
-  }, [count]);
+  const filled = PROFILE_FIELDS.filter((f) => (f === "batchyear" ? getBatchYear(userProfile) : userProfile?.[f] || (f === "profile_picture" && userProfile?.photoURL))).length;
+  const completeness = Math.round((filled / PROFILE_FIELDS.length) * 100);
 
   return (
-    <ThemeProvider theme={theme}>
-      <Box sx={{ display: "flex" }}>
-        <MainContent
-          eventsData={eventsData}
-          initiativesData={initiativesData}
-          userID={userID}
-          setCount={setCount}
-        />
+    <>
+      <Box
+        sx={{
+          position: "relative",
+          overflow: "hidden",
+          mb: 3,
+          p: { xs: 3, md: 4 },
+          borderRadius: 5,
+          color: "#fff",
+          background: (t) => t.custom.inkGradient,
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            right: -80,
+            top: -120,
+            width: 360,
+            height: 360,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(232,133,31,0.5) 0%, rgba(232,133,31,0) 70%)",
+          },
+        }}
+      >
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={3}
+          justifyContent="space-between"
+          alignItems={{ md: "center" }}
+          sx={{ position: "relative", zIndex: 1 }}
+        >
+          <Box>
+            <Typography variant="overline" sx={{ color: "primary.light" }}>
+              {greeting()}
+            </Typography>
+            <Typography variant="h3" component="h1" sx={{ color: "#fff" }}>
+              Welcome back, {displayName.split(" ")[0]}
+            </Typography>
+            <Typography sx={{ mt: 1, color: "rgba(255,255,255,0.72)", maxWidth: 520 }}>
+              {completeness < 100
+                ? `Your profile is ${completeness}% complete. A full profile helps batchmates find you.`
+                : "Catch up on what your fellow alumni are sharing."}
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1.5} sx={{ flexShrink: 0 }}>
+            {completeness < 100 && (
+              <Button variant="contained" startIcon={<EditRoundedIcon />} onClick={() => navigate("/dashboard/updateProfile")}>
+                Complete profile
+              </Button>
+            )}
+            <Button
+              variant="outlined"
+              startIcon={<Groups2RoundedIcon />}
+              onClick={() => navigate("/dashboard/batchmates")}
+              sx={{ color: "#fff", borderColor: "rgba(255,255,255,0.35)", "&:hover": { borderColor: "#fff", bgcolor: "rgba(255,255,255,0.06)" } }}
+            >
+              Find batchmates
+            </Button>
+          </Stack>
+        </Stack>
       </Box>
-    </ThemeProvider>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={8}>
+          <Feed />
+        </Grid>
+        <Grid item xs={12} lg={4}>
+          <Stack spacing={2.5} sx={{ position: { lg: "sticky" }, top: { lg: 96 } }}>
+            <MembershipCard />
+            <DashboardEvents eventsData={eventsData} />
+            <DashboardInitiatives initiativesData={initiativesData} />
+            <DashboardUsers />
+          </Stack>
+        </Grid>
+      </Grid>
+    </>
   );
 };
 

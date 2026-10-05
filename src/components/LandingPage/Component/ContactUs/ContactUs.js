@@ -1,351 +1,190 @@
 import React, { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
-import {
-  Container,
-  Grid,
-  styled,
-  Typography,
-  TextField,
-  Button,
-  Box,
-  Paper,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
-  InputAdornment,
-  Fade,
-  Zoom,
-} from "@mui/material";
-import PersonIcon from "@mui/icons-material/Person";
-import EmailIcon from "@mui/icons-material/Email";
-import PhoneIcon from "@mui/icons-material/Phone";
-import HomeIcon from "@mui/icons-material/Home";
-import SendIcon from "@mui/icons-material/Send";
-import GroupIcon from "@mui/icons-material/Group";
-import HeroBanner from "../Content/HeroBanner";
-import { getHeroImages, submitContactForm } from "../../../../firebase/firestore";
+import { Box, Button, Card, Container, Grid, MenuItem, Stack, TextField, Typography } from "@mui/material";
+import SendRoundedIcon from "@mui/icons-material/SendRounded";
+import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
+import PhoneRoundedIcon from "@mui/icons-material/PhoneRounded";
+import PlaceRoundedIcon from "@mui/icons-material/PlaceRounded";
+import { getWebsiteContent, submitContactForm } from "../../../../firebase/firestore";
+import PageHeader from "../../../common/PageHeader";
+import SectionHeader from "../../../common/SectionHeader";
+import Reveal from "../../../common/Reveal";
 
-const SectionTitle = styled(Typography)(({ theme }) => ({
-  marginBottom: theme.spacing(4),
-  fontWeight: "bold",
-  position: "relative",
-  color: "#fba645",
-  fontSize: "2.5rem",
-  "&::after": {
-    content: '""',
-    position: "absolute",
-    bottom: "-10px",
-    left: 0,
-    width: "80px",
-    height: "4px",
-    background: "linear-gradient(90deg, #fba645 0%, #f76b1c 100%)",
-    borderRadius: "2px",
-  },
-}));
+export const CONTACT_FALLBACK = {
+  email: "contact@baa.com",
+  phone: "+91 1234567890",
+  address: "Bhavan's School, Vadodara, Gujarat, India",
+};
 
-const StyledPaper = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(4),
-  borderRadius: "20px",
-  boxShadow: "0 10px 40px rgba(251, 166, 69, 0.15)",
-  background: "linear-gradient(135deg, #ffffff 0%, #fef9f5 100%)",
-  border: "1px solid rgba(251, 166, 69, 0.1)",
-  transition: "all 0.3s ease",
-  "&:hover": {
-    boxShadow: "0 15px 50px rgba(251, 166, 69, 0.25)",
-    transform: "translateY(-5px)",
-  },
-}));
+const MAP_SRC =
+  "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14882.181992377934!2d73.16385965!3d22.33736295!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x395fc438ffffffff%3A0x9983a37a832dd134!2sBhavan's%20School%2C%20Vadodara!5e0!3m2!1sen!2sin!4v1694430824557!5m2!1sen!2sin";
 
-const StyledTextField = styled(TextField)(({ theme }) => ({
-  "& .MuiOutlinedInput-root": {
-    borderRadius: "12px",
-    backgroundColor: "#fff",
-    transition: "all 0.3s ease",
-    "&:hover": {
-      backgroundColor: "#fef9f5",
-    },
-    "&.Mui-focused": {
-      backgroundColor: "#fff",
-      boxShadow: "0 0 0 3px rgba(251, 166, 69, 0.1)",
-    },
-  },
-  "& .MuiOutlinedInput-notchedOutline": {
-    borderColor: "rgba(251, 166, 69, 0.2)",
-  },
-  "& .MuiInputLabel-root.Mui-focused": {
-    color: "#fba645",
-  },
-}));
+const GROUPS = [
+  { value: "general", label: "General inquiry" },
+  { value: "membership", label: "Membership" },
+  { value: "events", label: "Events" },
+  { value: "alumni", label: "Alumni relations" },
+  { value: "support", label: "Website support" },
+];
 
-const SubmitButton = styled(Button)(({ theme }) => ({
-  borderRadius: "12px",
-  padding: "12px 40px",
-  fontSize: "1rem",
-  fontWeight: "bold",
-  background: "linear-gradient(135deg, #fba645 0%, #f76b1c 100%)",
-  color: "#fff",
-  boxShadow: "0 6px 20px rgba(251, 166, 69, 0.3)",
-  transition: "all 0.3s ease",
-  "&:hover": {
-    background: "linear-gradient(135deg, #f76b1c 0%, #fba645 100%)",
-    boxShadow: "0 8px 25px rgba(251, 166, 69, 0.4)",
-    transform: "translateY(-2px)",
-  },
-}));
+const EMPTY = { name: "", email: "", phone: "", address: "", group: "general", message: "" };
 
-const StyledIframe = styled("iframe")(({ theme }) => ({
-  border: 0,
-  width: "100%",
-  height: "300px",
-  [theme.breakpoints.up("md")]: {
-    height: "400px",
-  },
-  borderRadius: theme.shape.borderRadius,
-}));
+const InfoRow = ({ icon: Icon, label, value, href }) => (
+  <Stack direction="row" spacing={2} alignItems="flex-start">
+    <Box
+      sx={{
+        width: 44,
+        height: 44,
+        borderRadius: 3,
+        flexShrink: 0,
+        display: "grid",
+        placeItems: "center",
+        bgcolor: "rgba(232,133,31,0.12)",
+        color: "primary.main",
+      }}
+    >
+      <Icon fontSize="small" />
+    </Box>
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+        {label}
+      </Typography>
+      <Typography
+        component={href ? "a" : "p"}
+        href={href}
+        sx={{ display: "block", fontWeight: 600, color: "text.primary", textDecoration: "none", whiteSpace: "pre-line", "&:hover": href ? { color: "primary.main" } : {} }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  </Stack>
+);
 
-const ContactUs = () => {
-  const imageHide = ["/"];
-  const location = useLocation();
-
-  const [heroImages, setHeroImages] = useState([]);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    address: "",
-    phone: "",
-    group: "general",
-  });
+/**
+ * Contact form + details. Rendered as a section on the home page and as the
+ * standalone /contact page (`page` prop).
+ */
+const ContactUs = ({ page = false }) => {
+  const [form, setForm] = useState(EMPTY);
+  const [sending, setSending] = useState(false);
+  const [contact, setContact] = useState(CONTACT_FALLBACK);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const images = await getHeroImages();
-        setHeroImages(images);
-      } catch (error) {
-        console.error("Error fetching hero images:", error);
-      }
-    };
-    fetchData();
+    getWebsiteContent("contact")
+      .then((c) => c && setContact({ ...CONTACT_FALLBACK, ...Object.fromEntries(Object.entries(c).filter(([, v]) => v)) }))
+      .catch(() => {});
   }, []);
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((prevData) => ({
-      ...prevData,
-      [name]: value,
-    }));
-  };
+  const onChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setSending(true);
     try {
-      await submitContactForm(formData);
-      toast.success("Thank you for contacting us! We'll get back to you soon.");
-      setFormData({ name: "", email: "", address: "", phone: "", group: "general" });
+      await submitContactForm(form);
+      toast.success("Thanks for reaching out! We'll get back to you soon.");
+      setForm(EMPTY);
     } catch (error) {
-      console.error("Error submitting contact form:", error);
-      toast.error("Some Problem Occurred. Please try again.");
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSending(false);
     }
   };
 
-  return (
-    <>
-      {!imageHide.includes(location.pathname) && (
-        <HeroBanner heroImages={heroImages} />
-      )}
-      <Container sx={{ mt: 8, mb: 8 }}>
-        <Fade in timeout={800}>
-          <Box>
-            <SectionTitle variant="h3" align="center" gutterBottom>
-              Get In Touch
-            </SectionTitle>
-            <Typography
-              variant="h6"
-              align="center"
-              color="textSecondary"
-              sx={{ mb: 6, maxWidth: "600px", mx: "auto" }}
-            >
-              We'd love to hear from you. Send us a message and we'll respond as soon as possible.
+  const body = (
+    <Grid container spacing={{ xs: 4, md: 5 }}>
+      <Grid item xs={12} md={7}>
+        <Reveal>
+          <Card sx={{ p: { xs: 3, md: 4.5 }, boxShadow: (t) => t.custom.shadows.sm }}>
+            <Typography variant="h5" sx={{ mb: 0.5 }}>
+              Send us a message
             </Typography>
-          </Box>
-        </Fade>
+            <Typography color="text.secondary" sx={{ mb: 3 }}>
+              We usually reply within a couple of working days.
+            </Typography>
+            <Box component="form" onSubmit={onSubmit}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField label="Full name" name="name" value={form.name} onChange={onChange} required fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField label="Email" name="email" type="email" value={form.email} onChange={onChange} required fullWidth />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField label="Phone" name="phone" value={form.phone} onChange={onChange} required fullWidth inputProps={{ inputMode: "tel" }} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField select label="Topic" name="group" value={form.group} onChange={onChange} fullWidth>
+                    {GROUPS.map((g) => (
+                      <MenuItem key={g.value} value={g.value}>
+                        {g.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label="City / address" name="address" value={form.address} onChange={onChange} fullWidth />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField label="Message" name="message" value={form.message} onChange={onChange} fullWidth multiline minRows={4} />
+                </Grid>
+              </Grid>
+              <Button type="submit" variant="contained" size="large" endIcon={<SendRoundedIcon />} disabled={sending} sx={{ mt: 3 }}>
+                {sending ? "Sending…" : "Send message"}
+              </Button>
+            </Box>
+          </Card>
+        </Reveal>
+      </Grid>
+      <Grid item xs={12} md={5}>
+        <Reveal delay={120}>
+          <Stack spacing={3}>
+            <Stack spacing={2.5} sx={{ p: { xs: 3, md: 4 }, borderRadius: 4, bgcolor: "#fff", border: "1px solid", borderColor: "divider" }}>
+              <InfoRow icon={MailOutlineRoundedIcon} label="Email" value={contact.email} href={`mailto:${contact.email}`} />
+              <InfoRow icon={PhoneRoundedIcon} label="Phone" value={contact.phone} href={`tel:${String(contact.phone).replace(/\s/g, "")}`} />
+              <InfoRow icon={PlaceRoundedIcon} label="Address" value={contact.address} />
+            </Stack>
+            <Box
+              component="iframe"
+              title="Map to Bhavan's School, Vadodara"
+              src={MAP_SRC}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+              sx={{ width: "100%", height: 280, border: 0, borderRadius: 4, filter: "saturate(0.85)" }}
+            />
+          </Stack>
+        </Reveal>
+      </Grid>
+    </Grid>
+  );
 
-        <Grid container spacing={4}>
-          <Grid item xs={12} md={6}>
-            <Zoom in timeout={1000}>
-              <StyledPaper elevation={3}>
-                <form onSubmit={handleSubmit}>
-                  <StyledTextField
-                    label="Full Name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                    margin="normal"
-                    variant="outlined"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <PersonIcon sx={{ color: "#fba645" }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                  <StyledTextField
-                    label="Email Address"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                    margin="normal"
-                    variant="outlined"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <EmailIcon sx={{ color: "#fba645" }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                  <StyledTextField
-                    label="Phone Number"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                    margin="normal"
-                    variant="outlined"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <PhoneIcon sx={{ color: "#fba645" }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                  <StyledTextField
-                    label="Address"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    fullWidth
-                    multiline
-                    rows={3}
-                    margin="normal"
-                    variant="outlined"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start" sx={{ alignSelf: "flex-start", mt: 2 }}>
-                          <HomeIcon sx={{ color: "#fba645" }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                  <FormControl fullWidth margin="normal">
-                    <InputLabel sx={{ "&.Mui-focused": { color: "#fba645" } }}>
-                      Contact Group
-                    </InputLabel>
-                    <Select
-                      name="group"
-                      value={formData.group}
-                      onChange={handleChange}
-                      label="Contact Group"
-                      startAdornment={
-                        <InputAdornment position="start">
-                          <GroupIcon sx={{ color: "#fba645" }} />
-                        </InputAdornment>
-                      }
-                      sx={{
-                        borderRadius: "12px",
-                        backgroundColor: "#fff",
-                        "& .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "rgba(251, 166, 69, 0.2)",
-                        },
-                        "&:hover .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "rgba(251, 166, 69, 0.4)",
-                        },
-                        "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "#fba645",
-                          boxShadow: "0 0 0 3px rgba(251, 166, 69, 0.1)",
-                        },
-                      }}
-                    >
-                      <MenuItem value="general">General Inquiry</MenuItem>
-                      <MenuItem value="membership">Membership</MenuItem>
-                      <MenuItem value="events">Events</MenuItem>
-                      <MenuItem value="alumni">Alumni Relations</MenuItem>
-                      <MenuItem value="support">Support</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <Box sx={{ mt: 3, textAlign: "center" }}>
-                    <SubmitButton
-                      type="submit"
-                      variant="contained"
-                      size="large"
-                      endIcon={<SendIcon />}
-                    >
-                      Send Message
-                    </SubmitButton>
-                  </Box>
-                </form>
-              </StyledPaper>
-            </Zoom>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Zoom in timeout={1200}>
-              <Box>
-                <StyledIframe
-                  src={
-                    "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14882.181992377934!2d73.16385965!3d22.33736295!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x395fc438ffffffff%3A0x9983a37a832dd134!2sBhavan's%20School%2C%20Vadodara!5e0!3m2!1sen!2sin!4v1694430824557!5m2!1sen!2sin"
-                  }
-                  allowFullScreen=""
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-                <Box sx={{ mt: 3 }}>
-                  <Paper
-                    sx={{
-                      p: 3,
-                      borderRadius: "20px",
-                      background: "linear-gradient(135deg, #fba645 0%, #f76b1c 100%)",
-                      color: "#fff",
-                      boxShadow: "0 8px 25px rgba(251, 166, 69, 0.3)",
-                    }}
-                  >
-                    <Typography variant="h6" gutterBottom fontWeight="bold">
-                      Contact Information
-                    </Typography>
-                    <Box sx={{ mt: 2, display: "flex", alignItems: "center", mb: 1.5 }}>
-                      <EmailIcon sx={{ mr: 2 }} />
-                      <Typography>contact@baa.com</Typography>
-                    </Box>
-                    <Box sx={{ display: "flex", alignItems: "center", mb: 1.5 }}>
-                      <PhoneIcon sx={{ mr: 2 }} />
-                      <Typography>+91 1234567890</Typography>
-                    </Box>
-                    <Box sx={{ display: "flex", alignItems: "flex-start" }}>
-                      <HomeIcon sx={{ mr: 2, mt: 0.5 }} />
-                      <Typography>
-                        Bhavan's School, Vadodara<br />
-                        Gujarat, India
-                      </Typography>
-                    </Box>
-                  </Paper>
-                </Box>
-              </Box>
-            </Zoom>
-          </Grid>
-        </Grid>
+  if (page) {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Contact"
+          title="We'd love to hear from you"
+          subtitle="Questions about membership, events or volunteering? Drop us a line."
+          crumbs={[{ label: "Contact" }]}
+        />
+        <Container maxWidth="lg" sx={{ py: { xs: 6, md: 9 } }}>
+          {body}
+        </Container>
+      </>
+    );
+  }
+
+  return (
+    <Box component="section" sx={{ py: { xs: 10, md: 14 }, bgcolor: "background.default" }}>
+      <Container maxWidth="lg">
+        <SectionHeader eyebrow="Get in touch" title="Contact us" subtitle="Questions about membership, events or volunteering? Drop us a line." />
+        {body}
       </Container>
-    </>
+    </Box>
   );
 };
+
+export const ContactPage = () => <ContactUs page />;
 
 export default ContactUs;

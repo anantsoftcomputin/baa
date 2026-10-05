@@ -1,318 +1,136 @@
-import React, { useState } from "react";
-import { Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
-import { ToastContainer } from "react-toastify";
+import React, { Suspense, lazy, useEffect } from "react";
+import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
+import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import theme from "./theme";
 import { AuthProvider } from "./contexts/AuthContext";
-import { ProtectedRoute, MemberRoute, AdminRoute, PublicRoute } from "./components/ProtectedRoute";
-//landing page components
+import { ProtectedRoute, AdminRoute, PublicRoute } from "./components/ProtectedRoute";
+import { FullPageLoader } from "./components/common/Loader";
 import Navbar from "./components/LandingPage/Component/Navbar/Navbar";
-import LandingPage from "./components/LandingPage/LandingPage";
-import Event from "./components/LandingPage/Component/EventPage/Event";
-import EventData from "./components/LandingPage/Component/EventPage/EventData";
-import Contact from "./components/LandingPage/Component/ContactUs/ContactUs";
-import Login from "./components/Auth/Login";
-import Register from "./components/Auth/Register";
-import ForgotPassword from "./components/Auth/ForgotPassword";
 import Footers from "./components/LandingPage/Component/Footer/Footers";
-import Blogs from "./components/LandingPage/Component/Blogs/Blog";
-import Gallery from "./components/LandingPage/Component/Gallery/Gallery";
-import Terms from "./components/LandingPage/Component/TermsAndConditons/Terms";
-import Privacy from "./components/LandingPage/Component/TermsAndConditons/Privacy";
-// dashboard components
-import Dashboard from "./components/Dashboard/Component/Dashboard";
-import AdminNavbar from "./components/Dashboard/Component/Navbar/Navbar";
-import AdminSidebar from "./components/Dashboard/Component/SideBar/Sidebar";
-import Profile from "./components/Dashboard/Component/UserProfile/Profile";
-import UserProfile from "./components/Dashboard/Component/UserProfile/UserProfile";
-import EventSection from "./components/Dashboard/Component/EventsSection/EventSection";
-import InitiativesSection from "./components/Dashboard/Component/EventsSection/InitiativesSection";
-import Batchmate from "./components/Dashboard/Component/BatchMate-section/Batchmate";
-import CheckUser from "./components/Dashboard/Component/UserProfile/CheckUser";
-import DashboardEventData from "./components/Dashboard/Component/EventsSection/EventData";
-import DashboardInitiativesData from "./components/Dashboard/Component/EventsSection/InitiativeData";
-import BlogDetails from "./components/LandingPage/Component/Blogs/BlogDetails";
-import PostsByFollowing from "./components/Dashboard/Component/MainContent/PostsByFollowing";
-import ChangePassword from "./components/Dashboard/Component/UserProfile/ChangePassword";
-import DashboardTwo from "./components/Dashboard/Component/DashboardTwo";
-import HeroBanner from "./components/LandingPage/Component/Content/HeroBanner";
-import AdminPanel from "./components/Admin/AdminPanel";
-import AddAchievement from "./components/Dashboard/Component/ContentManagement/AddAchievement";
-import AddTestimonial from "./components/Dashboard/Component/ContentManagement/AddTestimonial";
-import AddCommitteeMember from "./components/Dashboard/Component/ContentManagement/AddCommitteeMember";
-import AddBlog from "./components/Dashboard/Component/ContentManagement/AddBlog";
-import AddGalleryImage from "./components/Dashboard/Component/ContentManagement/AddGalleryImage";
+import LandingPage from "./components/LandingPage/LandingPage";
+import NotFound from "./components/common/NotFound";
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: "#FF8C42", // Vibrant Orange
-      light: "#FFB366",
-      dark: "#E67A2E",
-      contrastText: "#1A1A1A",
-    },
-    secondary: {
-      main: "#8B4513", // Rich Brown
-      light: "#A0522D",
-      dark: "#5C2E0A",
-      contrastText: "#FFFFFF",
-    },
-    background: {
-      default: "#FAFAFA",
-      paper: "#FFFFFF",
-    },
-    text: {
-      primary: "#1A1A1A", // Deep Black
-      secondary: "#4A4A4A",
-    },
-    error: {
-      main: "#D32F2F",
-    },
-    warning: {
-      main: "#FF8C42",
-    },
-    info: {
-      main: "#8B4513",
-    },
-    success: {
-      main: "#2E7D32",
-    },
-  },
-  typography: {
-    fontFamily: "'Inter', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
-    h1: {
-      fontWeight: 700,
-      fontSize: "3.5rem",
-      letterSpacing: "-0.02em",
-      color: "#1A1A1A",
-    },
-    h2: {
-      fontWeight: 700,
-      fontSize: "2.75rem",
-      letterSpacing: "-0.01em",
-      color: "#1A1A1A",
-    },
-    h3: {
-      fontWeight: 600,
-      fontSize: "2.25rem",
-      color: "#1A1A1A",
-    },
-    h4: {
-      fontWeight: 600,
-      fontSize: "1.75rem",
-      color: "#1A1A1A",
-    },
-    body1: {
-      fontSize: "1rem",
-      lineHeight: 1.7,
-      color: "#4A4A4A",
-    },
-    button: {
-      fontWeight: 600,
-      textTransform: "none",
-      letterSpacing: "0.02em",
-    },
-  },
-  shape: {
-    borderRadius: 16,
-  },
-  shadows: [
-    "none",
-    "0px 2px 8px rgba(255, 140, 66, 0.08)",
-    "0px 4px 16px rgba(255, 140, 66, 0.12)",
-    "0px 8px 24px rgba(139, 69, 19, 0.15)",
-    "0px 12px 32px rgba(26, 26, 26, 0.12)",
-    "0px 16px 40px rgba(255, 140, 66, 0.2)",
-    ...Array(19).fill("0px 20px 48px rgba(26, 26, 26, 0.15)"),
-  ],
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-          padding: "12px 32px",
-          fontSize: "1rem",
-          fontWeight: 600,
-          boxShadow: "none",
-          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-          "&:hover": {
-            boxShadow: "0px 8px 24px rgba(255, 140, 66, 0.25)",
-            transform: "translateY(-2px)",
-          },
-        },
-        contained: {
-          background: "linear-gradient(135deg, #FF8C42 0%, #E67A2E 100%)",
-          color: "#FFFFFF",
-          "&:hover": {
-            background: "linear-gradient(135deg, #FFB366 0%, #FF8C42 100%)",
-          },
-        },
-        outlined: {
-          borderColor: "#FF8C42",
-          color: "#FF8C42",
-          borderWidth: 2,
-          "&:hover": {
-            borderWidth: 2,
-            borderColor: "#E67A2E",
-            backgroundColor: "rgba(255, 140, 66, 0.08)",
-          },
-        },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: 20,
-          boxShadow: "0px 4px 20px rgba(26, 26, 26, 0.08)",
-          transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-          border: "1px solid rgba(255, 140, 66, 0.1)",
-          "&:hover": {
-            transform: "translateY(-8px)",
-            boxShadow: "0px 16px 48px rgba(255, 140, 66, 0.2)",
-            borderColor: "rgba(255, 140, 66, 0.3)",
-          },
-        },
-      },
-    },
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          borderRadius: 16,
-          backgroundImage: "none",
-        },
-        elevation1: {
-          boxShadow: "0px 4px 16px rgba(26, 26, 26, 0.06)",
-        },
-        elevation2: {
-          boxShadow: "0px 8px 24px rgba(26, 26, 26, 0.08)",
-        },
-      },
-    },
-    MuiAppBar: {
-      styleOverrides: {
-        root: {
-          boxShadow: "0px 2px 16px rgba(26, 26, 26, 0.08)",
-          backdropFilter: "blur(20px)",
-          backgroundColor: "rgba(255, 255, 255, 0.95)",
-        },
-      },
-    },
-    MuiChip: {
-      styleOverrides: {
-        root: {
-          borderRadius: 8,
-          fontWeight: 600,
-        },
-        filled: {
-          background: "linear-gradient(135deg, #FF8C42 0%, #E67A2E 100%)",
-          color: "#FFFFFF",
-        },
-      },
-    },
-  },
-});
+// Public pages (split into their own chunks)
+const Event = lazy(() => import("./components/LandingPage/Component/EventPage/Event"));
+const EventData = lazy(() => import("./components/LandingPage/Component/EventPage/EventData"));
+const ContactPage = lazy(() =>
+  import("./components/LandingPage/Component/ContactUs/ContactUs").then((m) => ({ default: m.ContactPage }))
+);
+const Blogs = lazy(() => import("./components/LandingPage/Component/Blogs/Blog"));
+const BlogDetails = lazy(() => import("./components/LandingPage/Component/Blogs/BlogDetails"));
+const Gallery = lazy(() => import("./components/LandingPage/Component/Gallery/Gallery"));
+const Terms = lazy(() => import("./components/LandingPage/Component/TermsAndConditons/Terms"));
+const Privacy = lazy(() => import("./components/LandingPage/Component/TermsAndConditons/Privacy"));
+const Login = lazy(() => import("./components/Auth/Login"));
+const Register = lazy(() => import("./components/Auth/Register"));
+const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword"));
+
+// Member dashboard
+const DashboardLayout = lazy(() => import("./components/Dashboard/Component/DashboardLayout"));
+const Dashboard = lazy(() => import("./components/Dashboard/Component/Dashboard"));
+const EventSection = lazy(() => import("./components/Dashboard/Component/EventsSection/EventSection"));
+const DashboardEventData = lazy(() => import("./components/Dashboard/Component/EventsSection/EventData"));
+const InitiativesSection = lazy(() => import("./components/Dashboard/Component/EventsSection/InitiativesSection"));
+const DashboardInitiativesData = lazy(() => import("./components/Dashboard/Component/EventsSection/InitiativeData"));
+const Profile = lazy(() => import("./components/Dashboard/Component/UserProfile/Profile"));
+const UserProfile = lazy(() => import("./components/Dashboard/Component/UserProfile/UserProfile"));
+const CheckUser = lazy(() => import("./components/Dashboard/Component/UserProfile/CheckUser"));
+const ChangePassword = lazy(() => import("./components/Dashboard/Component/UserProfile/ChangePassword"));
+const Batchmate = lazy(() => import("./components/Dashboard/Component/BatchMate-section/Batchmate"));
+const PostsByFollowing = lazy(() => import("./components/Dashboard/Component/MainContent/PostsByFollowing"));
+const Membership = lazy(() => import("./components/Dashboard/Component/Membership/Membership"));
+const AdminPanel = lazy(() => import("./components/Admin/AdminPanel"));
+
+const AUTH_PATHS = ["/login", "/register", "/forgotPassword"];
+
+/** Scroll to the top on navigation (but not when a page asked to scroll to a section). */
+const ScrollToTop = () => {
+  const { pathname, state } = useLocation();
+  useEffect(() => {
+    if (!state?.scrollTo) window.scrollTo(0, 0);
+  }, [pathname, state]);
+  return null;
+};
+
+const PublicLayout = () => {
+  const location = useLocation();
+  return (
+    <>
+      <Navbar />
+      <main>
+        <Suspense fallback={<FullPageLoader minHeight="70vh" />}>
+          <Outlet />
+        </Suspense>
+      </main>
+      {!AUTH_PATHS.includes(location.pathname) && <Footers />}
+    </>
+  );
+};
+
+/** Old content-management URLs now open the matching Admin Panel section. */
+const adminRedirect = (tab) => <Navigate to={`/dashboard/admin?tab=${tab}`} replace />;
 
 function App() {
-  const location = useLocation();
-  const hideFooterPaths = [
-    "/login",
-    "/register",
-    "/dashboard",
-    "/forgotPassword",
-  ];
-
-  const hideBanner = ["/login", "/register", "/forgotPassword"];
-
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const handleDrawerToggle = () => {
-    setDrawerOpen(!drawerOpen);
-  };
-
-  const Layout = () => {
-    return (
-      <>
-        <Navbar />
-        {!hideBanner.includes(location.pathname) && <HeroBanner />}
-        <Outlet />
-        {!hideFooterPaths.includes(location.pathname) && <Footers />}
-      </>
-    );
-  };
-
-  const AdminLayout = () => {
-    return (
-      <>
-        <AdminNavbar handleDrawerToggle={handleDrawerToggle} />
-        <AdminSidebar
-          drawerOpen={drawerOpen}
-          handleDrawerToggle={handleDrawerToggle}
-        />
-        <Outlet />
-      </>
-    );
-  };
-
   return (
     <AuthProvider>
       <ThemeProvider theme={theme}>
-        <ToastContainer theme="colored" position="top-center" autoClose={3000} />
         <CssBaseline />
-        <Routes>
-          <Route path="/admin" element={<Navigate to="/dashboard/admin" replace />} />
-          <Route path="/" element={<Layout />}>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/events" element={<Event />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/events/:eventName" element={<EventData />} />
-            <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-            <Route path="/Blogs" element={<Blogs />} />
-            <Route path="/Blogs/:BlogId" element={<BlogDetails />} />
-            <Route path="/Gallery" element={<Gallery />} />
-            <Route path="/forgotPassword" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-            <Route path="/Terms" element={<Terms />} />
-            <Route path="/Privacy" element={<Privacy />} />
-          </Route>
+        <ToastContainer position="top-center" autoClose={3500} newestOnTop theme="light" />
+        <ScrollToTop />
+        <Suspense fallback={<FullPageLoader />}>
+          <Routes>
+            <Route path="/admin" element={<Navigate to="/dashboard/admin" replace />} />
+            <Route path="/becomemember" element={<Navigate to="/dashboard/membership" replace />} />
 
-          <Route path="/dashboard" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
-            <Route index element={<Dashboard />} />
-            <Route path="/dashboard/addEvents" element={<EventSection />} />
+            <Route element={<PublicLayout />}>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/events" element={<Event />} />
+              <Route path="/events/:eventName/:slug?" element={<EventData />} />
+              <Route path="/contact" element={<ContactPage />} />
+              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+              <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+              <Route path="/forgotPassword" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+              <Route path="/Blogs" element={<Blogs />} />
+              <Route path="/Blogs/:BlogId" element={<BlogDetails />} />
+              <Route path="/Gallery" element={<Gallery />} />
+              <Route path="/Terms" element={<Terms />} />
+              <Route path="/Privacy" element={<Privacy />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+
             <Route
-              path="/dashboard/followingPost"
-              element={<PostsByFollowing />}
-            />
-            <Route
-              path="/dashboard/event/:eventName"
-              element={<DashboardEventData />}
-            />
-            <Route
-              path="/dashboard/addInitiatives"
-              element={<InitiativesSection />}
-            />
-            <Route
-              path="/dashboard/addInitiatives/:InitiativeId"
-              element={<DashboardInitiativesData />}
-            />
-            <Route path="/dashboard/userProfile" element={<Profile />} />
-            <Route path="/dashboard/updateProfile" element={<UserProfile />} />
-            <Route
-              path="/dashboard/changePassword"
-              element={<ChangePassword />}
-            />
-            <Route
-              path="/dashboard/userProfile/:UserId"
-              element={<CheckUser />}
-            />
-            <Route path="/dashboard/batchmates" element={<Batchmate />} />
-            <Route path="/dashboard/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
-            <Route path="/dashboard/add-achievement" element={<AdminRoute><AddAchievement /></AdminRoute>} />
-            <Route path="/dashboard/add-testimonial" element={<AdminRoute><AddTestimonial /></AdminRoute>} />
-            <Route path="/dashboard/add-committee" element={<AdminRoute><AddCommitteeMember /></AdminRoute>} />
-            <Route path="/dashboard/add-blog" element={<AdminRoute><AddBlog /></AdminRoute>} />
-            <Route path="/dashboard/add-gallery" element={<AdminRoute><AddGalleryImage /></AdminRoute>} />
-          </Route>
-        </Routes>
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Dashboard />} />
+              <Route path="addEvents" element={<EventSection />} />
+              <Route path="event/:eventName/*" element={<DashboardEventData />} />
+              <Route path="followingPost" element={<PostsByFollowing />} />
+              <Route path="addInitiatives" element={<InitiativesSection />} />
+              <Route path="addInitiatives/:InitiativeId" element={<DashboardInitiativesData />} />
+              <Route path="userProfile" element={<Profile />} />
+              <Route path="userProfile/:UserId" element={<CheckUser />} />
+              <Route path="updateProfile" element={<UserProfile />} />
+              <Route path="changePassword" element={<ChangePassword />} />
+              <Route path="batchmates" element={<Batchmate />} />
+              <Route path="membership" element={<Membership />} />
+              <Route path="admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
+              <Route path="add-achievement" element={adminRedirect("achievements")} />
+              <Route path="add-testimonial" element={adminRedirect("testimonials")} />
+              <Route path="add-committee" element={adminRedirect("committee")} />
+              <Route path="add-blog" element={adminRedirect("blogs")} />
+              <Route path="add-gallery" element={adminRedirect("gallery")} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </ThemeProvider>
     </AuthProvider>
   );

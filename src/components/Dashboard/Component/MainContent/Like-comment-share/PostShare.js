@@ -1,107 +1,36 @@
 import React, { useState } from "react";
-import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Button,
-  IconButton,
-  Typography,
-  Grid,
-} from "@mui/material";
-import ShareIcon from "@mui/icons-material/Share";
-import FacebookIcon from "@mui/icons-material/Facebook";
-import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import { Button } from "@mui/material";
+import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
 import { sharePost } from "../../../../../firebase/firestore";
+import { logPostShared } from "../../../../../firebase/analytics";
+import ShareMenu from "../../../../common/ShareMenu";
 
-const PostShare = ({ postId, userId, shareCounts }) => {
-  const [open, setOpen] = useState(false);
-  const [shareCount, setShareCount] = useState(shareCounts?.length || 0);
+const PostShare = ({ postId, userId, initialCount = 0, postContent = "" }) => {
+  const [count, setCount] = useState(Math.max(0, Number(initialCount) || 0));
 
-  const handleClickOpen = () => {
-    setOpen(true);
-  };
-
-  const handleClose = () => {
-    setOpen(false);
-  };
-
-  const handleShare = async (platform) => {
-    const message = `Check out this post: ${window.location.href}`;
-
+  const onShared = async (platform) => {
+    setCount((c) => c + 1);
+    logPostShared(postId);
     try {
-      let shareUrl = "";
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-      if (platform === "WHATSAPP") {
-        shareUrl = isMobile
-          ? `whatsapp://send?text=${encodeURIComponent(message)}`
-          : `https://web.whatsapp.com/send?text=${encodeURIComponent(message)}`;
-        window.open(shareUrl, "_blank");
-      } else if (platform === "FACEBOOK") {
-        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-          window.location.href
-        )}&quote=${encodeURIComponent(message)}`;
-        window.open(shareUrl, "_blank");
-      }
-
-      const response = await sharePost(postId, userId, platform);
-
-      if (response) {
-        console.log("Post shared successfully!");
-        setShareCount((prevCount) => prevCount + 1);
-      } else {
-        console.log("Error sharing the post");
-      }
-    } catch (error) {
-      console.log("Error sharing the post");
+      await sharePost(postId, userId, platform);
+    } catch (_) {
+      setCount((c) => Math.max(0, c - 1));
     }
-
-    setOpen(false);
   };
+
+  const title = postContent ? `"${postContent.slice(0, 80)}" — on the BAA alumni portal` : "A post on the BAA alumni portal";
 
   return (
-    <>
-      <IconButton size="small" onClick={handleClickOpen}>
-        <ShareIcon />
-        {shareCount > 0 && <span>{shareCount}</span>}
-      </IconButton>
-
-      <Dialog open={open} onClose={handleClose} fullWidth>
-        <DialogTitle>Share this post via:</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2}>
-            <Grid item>
-              <IconButton
-                color="primary"
-                onClick={() => handleShare("FACEBOOK")}
-              >
-                <FacebookIcon fontSize="large" />
-                <Typography variant="body2" style={{ marginLeft: 8 }}>
-                  FACEBOOK
-                </Typography>
-              </IconButton>
-            </Grid>
-            <Grid item>
-              <IconButton
-                color="success"
-                onClick={() => handleShare("WHATSAPP")}
-              >
-                <WhatsAppIcon fontSize="large" />
-                <Typography variant="body2" style={{ marginLeft: 8 }}>
-                  WHATSAPP
-                </Typography>
-              </IconButton>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose} color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+    <ShareMenu
+      url={`${window.location.origin}/dashboard`}
+      title={title}
+      onShared={onShared}
+      renderTrigger={(open) => (
+        <Button size="small" onClick={open} startIcon={<IosShareRoundedIcon />} sx={{ color: "text.secondary" }}>
+          {count > 0 ? count : "Share"}
+        </Button>
+      )}
+    />
   );
 };
 

@@ -1,111 +1,64 @@
 import React, { useState } from "react";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  Box,
-} from "@mui/material";
+import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, TextField, Typography } from "@mui/material";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { toast } from "react-toastify";
 import { submitFeedback } from "../../../../firebase/firestore";
 
+const EMPTY = { name: "", email: "", mobile: "", feedback: "" };
+
 const FeedbackForm = ({ open, handleClose }) => {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [mobile, setMobile] = useState("");
-  const [feedback, setFeedback] = useState("");
+  const [form, setForm] = useState(EMPTY);
   const [isLoading, setIsLoading] = useState(false);
+
+  const onChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    const data = {
-      name,
-      email,
-      mobile,
-      feedback,
-    };
-
     try {
       setIsLoading(true);
-      await submitFeedback(data);
-      toast.success("Feedback submitted successfully. Thank you!");
-      setName("");
-      setEmail("");
-      setMobile("");
-      setFeedback("");
+      await submitFeedback(form);
+      toast.success("Thank you for your feedback!");
+      setForm(EMPTY);
       handleClose();
     } catch (error) {
       console.error("Error submitting feedback:", error);
-      toast.error("An error occurred. Please try again.");
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onClose={handleClose}>
-      <DialogTitle>Submit Feedback</DialogTitle>
-      <DialogContent>
-        <Box component="form" noValidate autoComplete="off">
-          <TextField
-            label="Name"
-            fullWidth
-            margin="normal"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            size="small"
-            required
-          />
-          <TextField
-            label="Email"
-            type="email"
-            fullWidth
-            margin="normal"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            size="small"
-            required
-          />
-          <TextField
-            label="Mobile Number"
-            type="tel"
-            fullWidth
-            margin="normal"
-            value={mobile}
-            onChange={(e) => setMobile(e.target.value)}
-            size="small"
-            required
-          />
-          <TextField
-            label="Feedback"
-            fullWidth
-            multiline
-            rows={4}
-            margin="normal"
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            size="small"
-            required
-          />
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose} size="small">
-          Cancel
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          color="primary"
-          variant="contained"
-          disabled={isLoading}
-          size="small"
-        >
-          {isLoading ? "Submitting..." : "Submit"}
-        </Button>
-      </DialogActions>
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+      <Box component="form" onSubmit={handleSubmit}>
+        <DialogTitle sx={{ pr: 7 }}>
+          Share your feedback
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 400 }}>
+            Tell us what's working and what we could do better.
+          </Typography>
+          <IconButton onClick={handleClose} aria-label="Close" sx={{ position: "absolute", right: 12, top: 12 }}>
+            <CloseRoundedIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField label="Name" name="name" value={form.name} onChange={onChange} required fullWidth />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField label="Email" name="email" type="email" value={form.email} onChange={onChange} required fullWidth />
+              <TextField label="Mobile" name="mobile" type="tel" value={form.mobile} onChange={onChange} fullWidth />
+            </Stack>
+            <TextField label="Your feedback" name="feedback" value={form.feedback} onChange={onChange} required fullWidth multiline minRows={4} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClose} color="inherit">
+            Cancel
+          </Button>
+          <Button type="submit" variant="contained" disabled={isLoading}>
+            {isLoading ? "Sending…" : "Send feedback"}
+          </Button>
+        </DialogActions>
+      </Box>
     </Dialog>
   );
 };

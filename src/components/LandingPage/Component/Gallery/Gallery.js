@@ -1,583 +1,277 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  Card,
-  CardContent,
-  CardMedia,
-  Container,
-  styled,
-  Typography,
-  Tabs,
-  Tab,
   Box,
-  Grid,
+  Button,
+  Chip,
+  Container,
   Dialog,
   IconButton,
-  CircularProgress,
-  Chip,
   Skeleton,
+  Stack,
   ToggleButton,
   ToggleButtonGroup,
+  Typography,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
-import CategoryIcon from "@mui/icons-material/Category";
-import SchoolIcon from "@mui/icons-material/School";
-import EventIcon from "@mui/icons-material/Event";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import PhotoLibraryRoundedIcon from "@mui/icons-material/PhotoLibraryRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import { getGalleryImages } from "../../../../firebase/firestore";
+import PageHeader from "../../../common/PageHeader";
+import SectionHeader from "../../../common/SectionHeader";
+import EmptyState from "../../../common/EmptyState";
+import Reveal from "../../../common/Reveal";
+import { imageOf } from "../../../../utils/format";
 
-const SectionTitle = styled(Typography)(({ theme }) => ({
-  marginBottom: theme.spacing(4),
-  fontWeight: "bold",
-  position: "relative",
-  color: "#fba645",
-  "&::after": {
-    content: '""',
-    position: "absolute",
-    bottom: "-10px",
-    left: 0,
-    width: "50px",
-    height: "3px",
-    backgroundColor: theme.palette.primary.main,
-  },
-}));
+const FILTERS = [
+  { key: "category", label: "Category", field: "category" },
+  { key: "batch", label: "Batch", field: "batch" },
+  { key: "event", label: "Event", field: "eventName" },
+];
 
-const Gallery = ({ galleryData: initialGalleryData = [] }) => {
-  const [galleryData, setGalleryData] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedBatch, setSelectedBatch] = useState("all");
-  const [selectedEvent, setSelectedEvent] = useState("all");
-  const [filterType, setFilterType] = useState("category"); // category, batch, event
-  const [loading, setLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [openLightbox, setOpenLightbox] = useState(false);
+/** CSS-columns masonry: keeps each photo's natural aspect ratio. */
+const Masonry = ({ items, onOpen }) => (
+  <Box sx={{ columnCount: { xs: 1, sm: 2, md: 3 }, columnGap: "16px" }}>
+    {items.map((item, i) => (
+      <Box
+        key={item.id || i}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${item.title || "photo"}`}
+        onClick={() => onOpen(i)}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen(i)}
+        sx={{
+          breakInside: "avoid",
+          mb: 2,
+          position: "relative",
+          borderRadius: 4,
+          overflow: "hidden",
+          cursor: "zoom-in",
+          bgcolor: "#F3EADF",
+          "& img": { width: "100%", height: "auto", transition: "transform .6s ease" },
+          "&:hover img, &:focus-visible img": { transform: "scale(1.04)" },
+          "&:hover .caption, &:focus-visible .caption": { opacity: 1, transform: "none" },
+        }}
+      >
+        <img src={imageOf(item)} alt={item.title || "Gallery photo"} loading="lazy" />
+        {(item.title || item.category) && (
+          <Box
+            className="caption"
+            sx={{
+              position: "absolute",
+              inset: "auto 0 0 0",
+              p: 2,
+              pt: 6,
+              color: "#fff",
+              background: "linear-gradient(180deg, transparent, rgba(12,18,26,0.85))",
+              opacity: { xs: 1, md: 0 },
+              transform: { xs: "none", md: "translateY(8px)" },
+              transition: "all .3s ease",
+            }}
+          >
+            {item.title && <Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>}
+            {item.category && (
+              <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                {item.category}
+              </Typography>
+            )}
+          </Box>
+        )}
+      </Box>
+    ))}
+  </Box>
+);
+
+export const Lightbox = ({ items, index, onClose, onIndex }) => {
+  const open = index !== null && index >= 0;
+  const item = open ? items[index] : null;
+
+  const step = useCallback(
+    (delta) => onIndex((index + delta + items.length) % items.length),
+    [index, items.length, onIndex]
+  );
 
   useEffect(() => {
-    // Use prop data if provided, otherwise fetch
-    if (initialGalleryData && initialGalleryData.length > 0) {
-      setGalleryData(initialGalleryData);
-      setLoading(false);
-    } else {
-      const fetchGalleryData = async () => {
-        try {
-          setLoading(true);
-          const images = await getGalleryImages();
-          setGalleryData(images);
-        } catch (error) {
-          console.error("Error fetching gallery:", error);
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchGalleryData();
-    }
-  }, [initialGalleryData]);
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "ArrowRight") step(1);
+      if (e.key === "ArrowLeft") step(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, step]);
 
-  // Intersection Observer for scroll animations
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("animate-in");
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth={false}
+      PaperProps={{ sx: { bgcolor: "transparent", boxShadow: "none", m: 1, maxWidth: "96vw" } }}
+      BackdropProps={{ sx: { bgcolor: "rgba(10,14,20,0.92)" } }}
+    >
+      {item && (
+        <Box sx={{ position: "relative", color: "#fff", textAlign: "center" }}>
+          <IconButton
+            onClick={onClose}
+            aria-label="Close"
+            sx={{ position: "fixed", top: 16, right: 16, color: "#fff", bgcolor: "rgba(255,255,255,0.1)" }}
+          >
+            <CloseRoundedIcon />
+          </IconButton>
+          {items.length > 1 && (
+            <>
+              <IconButton
+                onClick={() => step(-1)}
+                aria-label="Previous"
+                sx={{ position: "fixed", left: 16, top: "50%", color: "#fff", bgcolor: "rgba(255,255,255,0.1)" }}
+              >
+                <ChevronLeftRoundedIcon />
+              </IconButton>
+              <IconButton
+                onClick={() => step(1)}
+                aria-label="Next"
+                sx={{ position: "fixed", right: 16, top: "50%", color: "#fff", bgcolor: "rgba(255,255,255,0.1)" }}
+              >
+                <ChevronRightRoundedIcon />
+              </IconButton>
+            </>
+          )}
+          <Box
+            component="img"
+            src={imageOf(item)}
+            alt={item.title || ""}
+            sx={{ maxWidth: "88vw", maxHeight: "78vh", objectFit: "contain", borderRadius: 2, mx: "auto" }}
+          />
+          <Box sx={{ mt: 2 }}>
+            {item.title && <Typography variant="h6">{item.title}</Typography>}
+            {item.description && <Typography sx={{ color: "rgba(255,255,255,0.7)", maxWidth: 640, mx: "auto" }}>{item.description}</Typography>}
+            <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.5)" }}>
+              {index + 1} / {items.length}
+            </Typography>
+          </Box>
+        </Box>
+      )}
+    </Dialog>
+  );
+};
+
+/** Home-page teaser: a handful of photos and a link to the full gallery. */
+export const GalleryPreview = ({ galleryData = [], limit = 6 }) => {
+  const navigate = useNavigate();
+  const [index, setIndex] = useState(null);
+  const items = galleryData.filter((g) => imageOf(g)).slice(0, limit);
+  if (items.length === 0) return null;
+
+  return (
+    <Box component="section" sx={{ py: { xs: 10, md: 14 }, bgcolor: "#fff" }}>
+      <Container maxWidth="lg">
+        <SectionHeader
+          eyebrow="Memories"
+          title="From the gallery"
+          subtitle="Moments from reunions, events and campus life."
+          align="left"
+          action={
+            <Button endIcon={<ArrowForwardRoundedIcon />} onClick={() => navigate("/Gallery")}>
+              Full gallery
+            </Button>
           }
-        });
-      },
-      { threshold: 0.1 }
-    );
+        />
+        <Reveal>
+          <Masonry items={items} onOpen={setIndex} />
+        </Reveal>
+      </Container>
+      <Lightbox items={items} index={index} onClose={() => setIndex(null)} onIndex={setIndex} />
+    </Box>
+  );
+};
 
-    document.querySelectorAll(".gallery-item").forEach((item) => {
-      observer.observe(item);
-    });
+/** The /Gallery page. */
+const Gallery = () => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState("category");
+  const [value, setValue] = useState("all");
+  const [index, setIndex] = useState(null);
 
-    return () => observer.disconnect();
-  }, [galleryData]);
+  useEffect(() => {
+    getGalleryImages()
+      .then((images) => setItems((images || []).filter((g) => imageOf(g))))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const handleFilterTypeChange = (event, newFilterType) => {
-    if (newFilterType !== null) {
-      setFilterType(newFilterType);
-      // Reset filters when changing filter type
-      setSelectedCategory("all");
-      setSelectedBatch("all");
-      setSelectedEvent("all");
-    }
-  };
-
-  const handleImageClick = (image) => {
-    setSelectedImage(image);
-    setOpenLightbox(true);
-  };
-
-  const handleCloseLightbox = () => {
-    setOpenLightbox(false);
-    setTimeout(() => setSelectedImage(null), 300);
-  };
-
-  // Extract unique categories, batches, and events
-  const categories = [
-    ...new Set(galleryData.map((item) => item.category).filter(Boolean)),
-  ];
-  
-  const batches = [
-    ...new Set(galleryData.map((item) => item.batch).filter(Boolean)),
-  ].sort();
-  
-  const events = [
-    ...new Set(galleryData.map((item) => item.eventName).filter(Boolean)),
-  ];
-
-  // Apply filters based on filter type
-  let filteredImages = galleryData;
-  
-  if (filterType === "category" && selectedCategory !== "all") {
-    filteredImages = filteredImages.filter((item) => item.category === selectedCategory);
-  } else if (filterType === "batch" && selectedBatch !== "all") {
-    filteredImages = filteredImages.filter((item) => item.batch === selectedBatch);
-  } else if (filterType === "event" && selectedEvent !== "all") {
-    filteredImages = filteredImages.filter((item) => item.eventName === selectedEvent);
-  }
+  const field = FILTERS.find((f) => f.key === filterType).field;
+  const options = useMemo(
+    () => [...new Set(items.map((i) => i[field]).filter(Boolean))].sort(),
+    [items, field]
+  );
+  const visible = value === "all" ? items : items.filter((i) => String(i[field]) === String(value));
 
   return (
     <>
-      <Container sx={{ mt: 8, mb: 8 }}>
-        <SectionTitle variant="h4" className="fadeInUp">
-          Gallery
-        </SectionTitle>
-
-        {/* Filter Type Toggle */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-          <ToggleButtonGroup
-            value={filterType}
-            exclusive
-            onChange={handleFilterTypeChange}
-            sx={{
-              '& .MuiToggleButton-root': {
-                px: 3,
-                py: 1,
-                fontWeight: 600,
-                '&.Mui-selected': {
-                  background: 'linear-gradient(135deg, #fba645 0%, #ff8c00 100%)',
-                  color: '#fff',
-                  '&:hover': {
-                    background: 'linear-gradient(135deg, #ff8c00 0%, #fba645 100%)',
-                  },
-                },
-              },
-            }}
-          >
-            <ToggleButton value="category">
-              <CategoryIcon sx={{ mr: 1 }} />
-              Category
-            </ToggleButton>
-            <ToggleButton value="batch">
-              <SchoolIcon sx={{ mr: 1 }} />
-              Batch
-            </ToggleButton>
-            <ToggleButton value="event">
-              <EventIcon sx={{ mr: 1 }} />
-              Event
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
-
-        {/* Category Filters */}
-        {filterType === "category" && (
-          <Box
-            sx={{
-              mb: 4,
-              display: "flex",
-              justifyContent: "center",
-              flexWrap: "wrap",
-              gap: 1,
-            }}
-          >
-            <Chip
-              label="All"
-              onClick={() => setSelectedCategory("all")}
-              sx={{
-                background:
-                  selectedCategory === "all"
-                    ? "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)"
-                    : "rgba(251, 166, 69, 0.1)",
-                color: selectedCategory === "all" ? "#fff" : "#fba645",
-                fontWeight: "bold",
-                px: 2,
-                transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                "&:hover": {
-                  transform: "translateY(-3px) scale(1.05)",
-                  boxShadow: "0 8px 20px rgba(251, 166, 69, 0.4)",
-                },
-              }}
-              icon={<CategoryIcon />}
-            />
-            {categories.map((category) => (
-              <Chip
-                key={category}
-                label={category}
-                onClick={() => setSelectedCategory(category)}
-                sx={{
-                  background:
-                    selectedCategory === category
-                      ? "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)"
-                      : "rgba(251, 166, 69, 0.1)",
-                  color: selectedCategory === category ? "#fff" : "#fba645",
-                  fontWeight: "bold",
-                  px: 2,
-                  transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                  "&:hover": {
-                    transform: "translateY(-3px) scale(1.05)",
-                    boxShadow: "0 8px 20px rgba(251, 166, 69, 0.4)",
-                  },
+      <PageHeader
+        eyebrow="Gallery"
+        title="Moments worth keeping"
+        subtitle="Photographs from reunions, events and decades of campus life."
+        crumbs={[{ label: "Gallery" }]}
+      />
+      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
+        {items.length > 0 && (
+          <Box sx={{ mb: 4 }}>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ md: "center" }}>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={filterType}
+                onChange={(_, v) => {
+                  if (v) {
+                    setFilterType(v);
+                    setValue("all");
+                  }
                 }}
-              />
-            ))}
+                sx={{ bgcolor: "#fff", "& .MuiToggleButton-root": { px: 2, textTransform: "none", fontWeight: 600 } }}
+              >
+                {FILTERS.map((f) => (
+                  <ToggleButton key={f.key} value={f.key}>
+                    {f.label}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {["all", ...options].map((o) => (
+                  <Chip
+                    key={o}
+                    label={o === "all" ? "All" : o}
+                    onClick={() => setValue(o)}
+                    color={value === o ? "primary" : "default"}
+                    variant={value === o ? "filled" : "outlined"}
+                    sx={{ bgcolor: value === o ? undefined : "#fff" }}
+                  />
+                ))}
+              </Stack>
+            </Stack>
           </Box>
         )}
 
-        {/* Batch Filters */}
-        {filterType === "batch" && (
-          <Box
-            sx={{
-              mb: 4,
-              display: "flex",
-              justifyContent: "center",
-              flexWrap: "wrap",
-              gap: 1,
-            }}
-          >
-            <Chip
-              label="All Batches"
-              onClick={() => setSelectedBatch("all")}
-              sx={{
-                background:
-                  selectedBatch === "all"
-                    ? "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)"
-                    : "rgba(251, 166, 69, 0.1)",
-                color: selectedBatch === "all" ? "#fff" : "#fba645",
-                fontWeight: "bold",
-                px: 2,
-                transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                "&:hover": {
-                  transform: "translateY(-3px) scale(1.05)",
-                  boxShadow: "0 8px 20px rgba(251, 166, 69, 0.4)",
-                },
-              }}
-              icon={<SchoolIcon />}
-            />
-            {batches.map((batch) => (
-              <Chip
-                key={batch}
-                label={batch}
-                onClick={() => setSelectedBatch(batch)}
-                sx={{
-                  background:
-                    selectedBatch === batch
-                      ? "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)"
-                      : "rgba(251, 166, 69, 0.1)",
-                  color: selectedBatch === batch ? "#fff" : "#fba645",
-                  fontWeight: "bold",
-                  px: 2,
-                  transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                  "&:hover": {
-                    transform: "translateY(-3px) scale(1.05)",
-                    boxShadow: "0 8px 20px rgba(251, 166, 69, 0.4)",
-                  },
-                }}
-              />
-            ))}
-          </Box>
-        )}
-
-        {/* Event Filters */}
-        {filterType === "event" && (
-          <Box
-            sx={{
-              mb: 4,
-              display: "flex",
-              justifyContent: "center",
-              flexWrap: "wrap",
-              gap: 1,
-            }}
-          >
-            <Chip
-              label="All Events"
-              onClick={() => setSelectedEvent("all")}
-              sx={{
-                background:
-                  selectedEvent === "all"
-                    ? "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)"
-                    : "rgba(251, 166, 69, 0.1)",
-                color: selectedEvent === "all" ? "#fff" : "#fba645",
-                fontWeight: "bold",
-                px: 2,
-                transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                "&:hover": {
-                  transform: "translateY(-3px) scale(1.05)",
-                  boxShadow: "0 8px 20px rgba(251, 166, 69, 0.4)",
-                },
-              }}
-              icon={<EventIcon />}
-            />
-            {events.map((event) => (
-              <Chip
-                key={event}
-                label={event}
-                onClick={() => setSelectedEvent(event)}
-                sx={{
-                  background:
-                    selectedEvent === event
-                      ? "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)"
-                      : "rgba(251, 166, 69, 0.1)",
-                  color: selectedEvent === event ? "#fff" : "#fba645",
-                  fontWeight: "bold",
-                  px: 2,
-                  transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                  "&:hover": {
-                    transform: "translateY(-3px) scale(1.05)",
-                    boxShadow: "0 8px 20px rgba(251, 166, 69, 0.4)",
-                  },
-                }}
-              />
-            ))}
-          </Box>
-        )}
-
-        {/* Loading State */}
         {loading ? (
-          <Grid container spacing={3}>
-            {[1, 2, 3, 4, 5, 6].map((item) => (
-              <Grid item xs={12} sm={6} md={4} key={item}>
-                <Skeleton
-                  variant="rectangular"
-                  height={280}
-                  sx={{
-                    borderRadius: 4,
-                    animation: "pulse 1.5s ease-in-out infinite",
-                  }}
-                />
-                <Skeleton
-                  variant="text"
-                  sx={{ mt: 1, animation: "pulse 1.5s ease-in-out 0.2s infinite" }}
-                />
-                <Skeleton
-                  variant="text"
-                  width="60%"
-                  sx={{ animation: "pulse 1.5s ease-in-out 0.4s infinite" }}
-                />
-              </Grid>
+          <Box sx={{ columnCount: { xs: 1, sm: 2, md: 3 }, columnGap: "16px" }}>
+            {[260, 180, 320, 220, 280, 200].map((h, i) => (
+              <Skeleton key={i} variant="rounded" height={h} sx={{ mb: 2, breakInside: "avoid" }} />
             ))}
-          </Grid>
-        ) : (
-          <Grid container spacing={3}>
-            {filteredImages.map((item, index) => (
-              <Grid item xs={12} sm={6} md={4} key={item.id || index}>
-                <Card
-                  className="gallery-item"
-                  onClick={() => handleImageClick(item)}
-                  sx={{
-                    cursor: "pointer",
-                    borderRadius: 4,
-                    overflow: "hidden",
-                    background: "rgba(255, 255, 255, 0.05)",
-                    backdropFilter: "blur(10px)",
-                    border: "1px solid rgba(251, 166, 69, 0.1)",
-                    transition: "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                    opacity: 0,
-                    transform: "translateY(30px)",
-                    "&.animate-in": {
-                      opacity: 1,
-                      transform: "translateY(0)",
-                      transitionDelay: `${index * 0.1}s`,
-                    },
-                    "&:hover": {
-                      transform: "translateY(-15px) scale(1.03)",
-                      boxShadow: "0 20px 40px rgba(251, 166, 69, 0.3)",
-                      border: "1px solid rgba(251, 166, 69, 0.3)",
-                      "& .gallery-image": {
-                        transform: "scale(1.15)",
-                      },
-                      "& .gallery-overlay": {
-                        opacity: 1,
-                      },
-                    },
-                  }}
-                >
-                  <Box sx={{ position: "relative", overflow: "hidden" }}>
-                    <CardMedia
-                      component="img"
-                      image={item.imageUrl || item.image}
-                      alt={item.title}
-                      className="gallery-image"
-                      sx={{
-                        height: 280,
-                        objectFit: "cover",
-                        transition: "transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                      }}
-                    />
-                    <Box
-                      className="gallery-overlay"
-                      sx={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        background:
-                          "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.8) 100%)",
-                        opacity: 0,
-                        transition: "opacity 0.4s ease",
-                        display: "flex",
-                        alignItems: "flex-end",
-                        padding: 2,
-                      }}
-                    >
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: "#fff",
-                          fontWeight: "bold",
-                          textShadow: "2px 2px 4px rgba(0,0,0,0.8)",
-                        }}
-                      >
-                        Click to view
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <CardContent>
-                    <Typography
-                      variant="h6"
-                      sx={{
-                        fontWeight: "bold",
-                        mb: 1,
-                        color: "#333",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item.title}
-                    </Typography>
-                    {item.description && (
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: "#666",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                        }}
-                      >
-                        {item.description}
-                      </Typography>
-                    )}
-                    {item.category && (
-                      <Chip
-                        label={item.category}
-                        size="small"
-                        sx={{
-                          mt: 1,
-                          background:
-                            "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)",
-                          color: "#fff",
-                          fontWeight: "bold",
-                        }}
-                      />
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        )}
-
-        {/* Empty State */}
-        {!loading && filteredImages.length === 0 && (
-          <Box
-            sx={{
-              textAlign: "center",
-              py: 8,
-              opacity: 0.7,
-            }}
-          >
-            <Typography variant="h6" color="textSecondary">
-              No images found in this category
-            </Typography>
           </Box>
+        ) : visible.length === 0 ? (
+          <EmptyState
+            icon={PhotoLibraryRoundedIcon}
+            title={items.length ? "No photos match this filter" : "The gallery is empty for now"}
+            description={items.length ? "Try a different category." : "Photos will appear here once they're uploaded."}
+          />
+        ) : (
+          <Masonry items={visible} onOpen={setIndex} />
         )}
       </Container>
-
-      {/* Lightbox Modal */}
-      <Dialog
-        open={openLightbox}
-        onClose={handleCloseLightbox}
-        maxWidth="lg"
-        PaperProps={{
-          sx: {
-            background: "rgba(0, 0, 0, 0.95)",
-            backdropFilter: "blur(20px)",
-            border: "1px solid rgba(251, 166, 69, 0.2)",
-            borderRadius: 4,
-            maxWidth: "90vw",
-            maxHeight: "90vh",
-          },
-        }}
-      >
-        <IconButton
-          onClick={handleCloseLightbox}
-          sx={{
-            position: "absolute",
-            top: 16,
-            right: 16,
-            color: "#fff",
-            background: "rgba(251, 166, 69, 0.8)",
-            zIndex: 1,
-            "&:hover": {
-              background: "rgba(251, 166, 69, 1)",
-              transform: "rotate(90deg) scale(1.1)",
-            },
-            transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
-        {selectedImage && (
-          <Box sx={{ p: 3 }}>
-            <img
-              src={selectedImage.imageUrl || selectedImage.image}
-              alt={selectedImage.title}
-              style={{
-                width: "100%",
-                height: "auto",
-                maxHeight: "75vh",
-                objectFit: "contain",
-                borderRadius: "16px",
-              }}
-            />
-            <Box sx={{ mt: 3, color: "#fff", textAlign: "center" }}>
-              <Typography variant="h5" sx={{ fontWeight: "bold", mb: 1 }}>
-                {selectedImage.title}
-              </Typography>
-              {selectedImage.description && (
-                <Typography variant="body1" sx={{ color: "#ccc" }}>
-                  {selectedImage.description}
-                </Typography>
-              )}
-              {selectedImage.category && (
-                <Chip
-                  label={selectedImage.category}
-                  sx={{
-                    mt: 2,
-                    background:
-                      "linear-gradient(135deg, #fba645 0%, #ff8c00 100%)",
-                    color: "#fff",
-                    fontWeight: "bold",
-                  }}
-                />
-              )}
-            </Box>
-          </Box>
-        )}
-      </Dialog>
+      <Lightbox items={visible} index={index} onClose={() => setIndex(null)} onIndex={setIndex} />
     </>
   );
 };

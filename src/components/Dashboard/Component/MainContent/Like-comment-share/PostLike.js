@@ -1,54 +1,55 @@
-import React, { useState, useEffect } from "react";
-import { IconButton } from "@mui/material";
-import FavoriteIcon from "@mui/icons-material/Favorite";
-import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
+import React, { useEffect, useState } from "react";
+import { Button } from "@mui/material";
+import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
+import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded";
+import { toast } from "react-toastify";
 import { toggleLike, checkUserLiked } from "../../../../../firebase/firestore";
+import { logPostLiked } from "../../../../../firebase/analytics";
 
-const PostLike = ({ postId, userId, likeCounts }) => {
+const PostLike = ({ postId, userId, initialCount = 0 }) => {
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(likeCounts?.length || 0);
+  const [count, setCount] = useState(Math.max(0, Number(initialCount) || 0));
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const checkLikeStatus = async () => {
-      if (userId && postId) {
-        const liked = await checkUserLiked(postId, userId);
-        setIsLiked(liked);
-      }
+    let alive = true;
+    if (userId && postId) {
+      checkUserLiked(postId, userId).then((liked) => alive && setIsLiked(liked));
+    }
+    return () => {
+      alive = false;
     };
-    checkLikeStatus();
   }, [postId, userId]);
 
-  const handleLikeClick = async () => {
+  const handleClick = async () => {
+    if (busy || !userId) return;
+    const next = !isLiked;
+    // Optimistic update, rolled back on failure.
+    setBusy(true);
+    setIsLiked(next);
+    setCount((c) => Math.max(0, c + (next ? 1 : -1)));
     try {
-      await toggleLike(postId, userId, isLiked);
-      
-      if (isLiked) {
-        setLikeCount((prevCount) => prevCount - 1);
-        setIsLiked(false);
-      } else {
-        setLikeCount((prevCount) => prevCount + 1);
-        setIsLiked(true);
-      }
+      await toggleLike(postId, userId, !next);
+      if (next) logPostLiked(postId);
     } catch (error) {
-      console.error("Error toggling like:", error);
+      setIsLiked(!next);
+      setCount((c) => Math.max(0, c + (next ? -1 : 1)));
+      toast.error("Couldn't update your like. Please try again.");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <IconButton
+    <Button
       size="small"
-      onClick={handleLikeClick}
-      sx={{
-        color: isLiked ? '#d32f2f' : '#757575',
-        '&:hover': {
-          color: '#d32f2f',
-          bgcolor: 'rgba(211, 47, 47, 0.08)'
-        }
-      }}
+      onClick={handleClick}
+      aria-pressed={isLiked}
+      startIcon={isLiked ? <FavoriteRoundedIcon /> : <FavoriteBorderRoundedIcon />}
+      sx={{ color: isLiked ? "#D93A3A" : "text.secondary", "&:hover": { bgcolor: "rgba(217,58,58,0.08)" } }}
     >
-      {isLiked ? <FavoriteIcon /> : <FavoriteBorderIcon />}
-      <span style={{ marginLeft: 4, fontSize: '0.9rem' }}>{likeCount}</span>
-    </IconButton>
+      {count > 0 ? count : "Like"}
+    </Button>
   );
 };
 

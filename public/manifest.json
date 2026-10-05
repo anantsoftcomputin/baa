@@ -1,28 +1,14 @@
 {
   "short_name": "BAA",
-  "name": "Bhavans Alumni Asscociation",
+  "name": "Bhavan's Alumni Association, Vadodara",
   "icons": [
-    {
-      "src": "/BAA.png",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "/BAA.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/BAA.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    { "src": "favicon.ico", "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" },
+    { "src": "logo192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "logo512.png", "sizes": "512x512", "type": "image/png" }
   ],
-  "start_url": "/",
+  "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff",
-  "orientation": "portrait",
-  "description": "Bhavans Alumni Asscociation",
-  "scope": "/"
+  "theme_color": "#E8851F",
+  "background_color": "#FBF7F1",
+  "description": "Bhavan's Alumni Association, Vadodara"
 }

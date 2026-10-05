@@ -1,48 +1,76 @@
-/* Modern, fluid base styles */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Base styles. Component styling lives in src/theme.js and MUI `sx` props. */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, 
-    #ffffff 0%, 
-    rgba(25, 118, 210, 0.04) 50%,
-    #ffffff 100%);
-  min-height: 100vh;
+  text-rendering: optimizeLegibility;
   overflow-x: hidden;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-  background: rgba(25, 118, 210, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
+img {
+  max-width: 100%;
+  display: block;
 }
 
-/* Smooth transitions for all elements */
-* {
-  transition: background-color 0.3s ease, 
-              color 0.3s ease,
-              transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+a {
+  color: inherit;
 }
 
-/* Selection styling */
-::selection {
-  background: rgba(25, 118, 210, 0.3);
-  color: #333;
+:focus-visible {
+  outline: 2px solid #e8851f;
+  outline-offset: 2px;
 }
 
-::-moz-selection {
-  background: rgba(25, 118, 210, 0.3);
-  color: #333;
+/* Scroll-reveal (see components/common/Reveal.js) */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
 }
 
+/* react-slick dots in brand colours */
+.slick-dots li button:before {
+  font-size: 9px;
+  color: #17212e;
+  opacity: 0.2;
+}
+.slick-dots li.slick-active button:before {
+  color: #e8851f;
+  opacity: 1;
+}
+.slick-track {
+  display: flex !important;
+}
+.slick-slide {
+  height: inherit !important;
+}
+.slick-slide > div {
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}

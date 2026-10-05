@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
-  Button,
   Paper,
   Chip,
   TextField,
@@ -14,8 +13,6 @@ import {
   Card,
   CardContent,
   InputAdornment,
-  ToggleButtonGroup,
-  ToggleButton,
   Tooltip,
   IconButton,
 } from "@mui/material";
@@ -53,10 +50,12 @@ const ContactsManager = () => {
 
   useEffect(() => {
     fetchContacts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     applyFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contacts, searchQuery, statusFilter, groupFilter]);
 
   const fetchContacts = async () => {
@@ -140,18 +139,6 @@ const ContactsManager = () => {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "new":
-        return "error";
-      case "contacted":
-        return "warning";
-      case "resolved":
-        return "success";
-      default:
-        return "default";
-    }
-  };
 
   const getGroupColor = (group) => {
     const colors = {
@@ -171,7 +158,7 @@ const ContactsManager = () => {
       width: 180,
       renderCell: (params) => (
         <Box sx={{ display: "flex", alignItems: "center" }}>
-          <PersonIcon sx={{ mr: 1, color: "#fba645" }} />
+          <PersonIcon sx={{ mr: 1, color: "#E8851F" }} />
           <Typography variant="body2" fontWeight="bold">
             {params.value}
           </Typography>
@@ -215,6 +202,18 @@ const ContactsManager = () => {
             }}
           >
             {params.value}
+          </Typography>
+        </Tooltip>
+      ),
+    },
+    {
+      field: "message",
+      headerName: "Message",
+      width: 280,
+      renderCell: (params) => (
+        <Tooltip title={params.value || ""}>
+          <Typography variant="body2" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {params.value || "—"}
           </Typography>
         </Tooltip>
       ),
@@ -300,8 +299,8 @@ const ContactsManager = () => {
   ];
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom fontWeight="bold" color="#fba645">
+    <Box>
+      <Typography variant="h5" gutterBottom>
         Contact Submissions
       </Typography>
 
@@ -310,7 +309,7 @@ const ContactsManager = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: "linear-gradient(160deg, #17212E 0%, #0E1620 100%)",
               color: "#fff",
             }}
           >
@@ -325,7 +324,7 @@ const ContactsManager = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+              background: "linear-gradient(135deg, #E8851F 0%, #D9611A 100%)",
               color: "#fff",
             }}
           >
@@ -340,7 +339,7 @@ const ContactsManager = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "linear-gradient(135deg, #fba645 0%, #f76b1c 100%)",
+              background: "linear-gradient(135deg, #E8851F 0%, #f76b1c 100%)",
               color: "#fff",
             }}
           >
@@ -355,7 +354,7 @@ const ContactsManager = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+              background: "linear-gradient(135deg, #2BA6DE 0%, #1F7FB0 100%)",
               color: "#fff",
             }}
           >
@@ -395,7 +394,7 @@ const ContactsManager = () => {
       {/* Filters */}
       <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
         <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-          <FilterListIcon sx={{ mr: 1, color: "#fba645" }} />
+          <FilterListIcon sx={{ mr: 1, color: "#E8851F" }} />
           <Typography variant="h6" fontWeight="bold">
             Filters
           </Typography>
@@ -468,7 +467,7 @@ const ContactsManager = () => {
             "& .MuiDataGrid-columnHeaders": {
               backgroundColor: "#fef9f5",
               fontWeight: "bold",
-              borderBottom: "2px solid #fba645",
+              borderBottom: "2px solid #E8851F",
             },
           }}
         />

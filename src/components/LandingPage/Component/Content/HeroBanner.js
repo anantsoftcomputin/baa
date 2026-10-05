@@ -1,327 +1,255 @@
 import React, { useEffect, useState } from "react";
-import { Box, Button, Container, Typography, useMediaQuery, useTheme } from "@mui/material";
-import { styled, keyframes } from "@mui/system";
-import { getHeroImages } from "../../../../firebase/firestore";
-import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import { useNavigate } from "react-router-dom";
+import { Box, Button, Container, Stack, Typography } from "@mui/material";
+import { keyframes } from "@mui/system";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
+import { getHeroImages } from "../../../../firebase/firestore";
+import { useAuth } from "../../../../contexts/AuthContext";
+import { scrollToSection } from "../Navbar/Navbar";
 
-// Animations
 const kenBurns = keyframes`
-  0% {
-    transform: scale(1) translateX(0);
-  }
-  50% {
-    transform: scale(1.15) translateX(-5%);
-  }
-  100% {
-    transform: scale(1) translateX(0);
-  }
+  from { transform: scale(1.04); }
+  to   { transform: scale(1.14); }
 `;
 
-const fadeInUp = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateY(40px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+const rise = keyframes`
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: none; }
 `;
 
-const shimmer = keyframes`
-  0% {
-    background-position: -200% center;
-  }
-  100% {
-    background-position: 200% center;
-  }
-`;
+const DEFAULT_TITLE = "Once a Bhavanite, always family.";
+const DEFAULT_SUBTITLE =
+  "Reconnect with batchmates, celebrate milestones, and give back to the school that shaped us — all in one place.";
 
-const HeroSection = styled(Box)(({ theme }) => ({
-  height: "100vh",
-  minHeight: "600px",
-  display: "flex",
-  alignItems: "center",
-  position: "relative",
-  overflow: "hidden",
-  background: "#1A1A1A",
-  [theme.breakpoints.down("md")]: {
-    minHeight: "500px",
-    height: "calc(100vh - 70px)", // Account for bottom nav
-  },
-}));
+const ROTATE_MS = 7000;
 
-const BackgroundImage = styled("div")(({ bgImage }) => ({
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundImage: `url(${bgImage})`,
-  backgroundSize: "cover",
-  backgroundPosition: "center",
-  zIndex: 0,
-  animation: `${kenBurns} 25s ease-in-out infinite alternate`,
-  "&::after": {
-    content: '""',
-    position: "absolute",
-    inset: 0,
-    background: `
-      linear-gradient(135deg, 
-        rgba(26, 26, 26, 0.85) 0%, 
-        rgba(139, 69, 19, 0.65) 40%,
-        rgba(255, 140, 66, 0.4) 100%
-      )
-    `,
-  },
-}));
-
-const ContentWrapper = styled(Container)(({ theme }) => ({
-  position: "relative",
-  zIndex: 2,
-  paddingTop: theme.spacing(10),
-  paddingBottom: theme.spacing(10),
-  [theme.breakpoints.down("md")]: {
-    paddingTop: theme.spacing(6),
-    paddingBottom: theme.spacing(6),
-  },
-}));
-
-const MainTitle = styled(Typography)(({ theme }) => ({
-  fontWeight: 800,
-  fontSize: "clamp(2.5rem, 8vw, 5rem)",
-  lineHeight: 1.1,
-  color: "#FFFFFF",
-  marginBottom: theme.spacing(3),
-  textShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
-  animation: `${fadeInUp} 1s ease-out`,
-  letterSpacing: "-0.02em",
-  background: "linear-gradient(135deg, #FFFFFF 0%, #FFB366 100%)",
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  backgroundSize: "200% auto",
-  animation: `${shimmer} 3s linear infinite, ${fadeInUp} 1s ease-out`,
-}));
-
-const Subtitle = styled(Typography)(({ theme }) => ({
-  fontSize: "clamp(1.1rem, 3vw, 1.5rem)",
-  color: "rgba(255, 255, 255, 0.95)",
-  marginBottom: theme.spacing(5),
-  maxWidth: "700px",
-  textShadow: "0 2px 12px rgba(0, 0, 0, 0.4)",
-  animation: `${fadeInUp} 1s ease-out 0.2s both`,
-  lineHeight: 1.6,
-  fontWeight: 400,
-  [theme.breakpoints.down("md")]: {
-    marginBottom: theme.spacing(4),
-  },
-}));
-
-const CTAButton = styled(Button)(({ theme }) => ({
-  padding: "16px 40px",
-  fontSize: "1.1rem",
-  fontWeight: 700,
-  borderRadius: "16px",
-  textTransform: "none",
-  background: "linear-gradient(135deg, #FF8C42 0%, #E67A2E 100%)",
-  color: "#FFFFFF",
-  boxShadow: "0 8px 24px rgba(255, 140, 66, 0.4)",
-  transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-  animation: `${fadeInUp} 1s ease-out 0.4s both`,
-  border: "2px solid transparent",
-  position: "relative",
-  overflow: "hidden",
-  "&::before": {
-    content: '""',
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: "linear-gradient(135deg, #FFB366 0%, #FF8C42 100%)",
-    opacity: 0,
-    transition: "opacity 0.4s ease",
-  },
-  "&:hover": {
-    transform: "translateY(-4px) scale(1.02)",
-    boxShadow: "0 12px 32px rgba(255, 140, 66, 0.5)",
-    "&::before": {
-      opacity: 1,
-    },
-  },
-  "&:active": {
-    transform: "translateY(-2px) scale(0.98)",
-  },
-  "& .MuiButton-endIcon": {
-    transition: "transform 0.3s ease",
-  },
-  "&:hover .MuiButton-endIcon": {
-    transform: "translateX(6px)",
-  },
-  [theme.breakpoints.down("md")]: {
-    padding: "14px 32px",
-    fontSize: "1rem",
-  },
-}));
-
-const OutlinedButton = styled(Button)(({ theme }) => ({
-  padding: "16px 40px",
-  fontSize: "1.1rem",
-  fontWeight: 700,
-  borderRadius: "16px",
-  textTransform: "none",
-  color: "#FFFFFF",
-  border: "2px solid rgba(255, 255, 255, 0.5)",
-  backdropFilter: "blur(10px)",
-  background: "rgba(255, 255, 255, 0.1)",
-  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
-  transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-  animation: `${fadeInUp} 1s ease-out 0.5s both`,
-  "&:hover": {
-    background: "rgba(255, 255, 255, 0.2)",
-    border: "2px solid rgba(255, 255, 255, 0.8)",
-    transform: "translateY(-4px)",
-    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.2)",
-  },
-  [theme.breakpoints.down("md")]: {
-    padding: "14px 32px",
-    fontSize: "1rem",
-  },
-}));
-
-const ScrollIndicator = styled(Box)(({ theme }) => ({
-  position: "absolute",
-  bottom: "40px",
-  left: "50%",
-  transform: "translateX(-50%)",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: theme.spacing(1),
-  color: "#FFFFFF",
-  opacity: 0.8,
-  animation: `${fadeInUp} 1s ease-out 0.8s both`,
-  cursor: "pointer",
-  transition: "opacity 0.3s ease",
-  "&:hover": {
-    opacity: 1,
-  },
-  [theme.breakpoints.down("md")]: {
-    display: "none", // Hide on mobile
-  },
-}));
-
-const MouseIcon = styled(Box)({
-  width: "26px",
-  height: "42px",
-  border: "2px solid #FFFFFF",
-  borderRadius: "20px",
-  position: "relative",
-  "&::after": {
-    content: '""',
-    position: "absolute",
-    top: "8px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "4px",
-    height: "8px",
-    background: "#FFFFFF",
-    borderRadius: "4px",
-    animation: "scroll 1.5s infinite",
-  },
-  "@keyframes scroll": {
-    "0%": {
-      opacity: 1,
-      transform: "translateX(-50%) translateY(0)",
-    },
-    "100%": {
-      opacity: 0,
-      transform: "translateX(-50%) translateY(16px)",
-    },
-  },
-});
-
-const HeroBanner = () => {
+/**
+ * Full-bleed hero for the home page. Rotates through the hero images managed in
+ * Admin → Website Content; falls back to a branded backdrop when none exist.
+ */
+const HeroBanner = ({ stats = [] }) => {
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const [heroImages, setHeroImages] = useState([]);
+  const { currentUser } = useAuth();
+  const [slides, setSlides] = useState([]);
+  const [active, setActive] = useState(0);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const images = await getHeroImages();
-        setHeroImages(images);
-      } catch (error) {
-        console.error("Error fetching hero images:", error);
-        setHeroImages([]);
-      }
+    let alive = true;
+    getHeroImages().then((images) => {
+      if (alive) setSlides((images || []).filter((s) => s && s.image));
+    });
+    return () => {
+      alive = false;
     };
-    fetchData();
   }, []);
 
-  const scrollToContent = () => {
-    const element = document.getElementById("about-us");
-    if (element) {
-      const offset = 80;
-      const elementPosition = element.getBoundingClientRect().top;
-      const offsetPosition = elementPosition + window.pageYOffset - offset;
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth",
-      });
-    }
-  };
+  useEffect(() => {
+    if (slides.length < 2) return undefined;
+    const t = setInterval(() => setActive((i) => (i + 1) % slides.length), ROTATE_MS);
+    return () => clearInterval(t);
+  }, [slides.length]);
+
+  const current = slides[active] || {};
 
   return (
-    <>
-      {heroImages.map((heroimg, index) => (
-        <HeroSection key={index}>
-          <BackgroundImage bgImage={heroimg.image} />
-          <ContentWrapper>
-            <Box sx={{ maxWidth: "900px" }}>
-              <MainTitle variant="h1">
-                {heroimg.title || "Building Connections, Creating Futures"}
-              </MainTitle>
-              <Subtitle variant="h5">
-                {heroimg.subtitle || "Join thousands of alumni in a thriving community dedicated to growth, networking, and lifelong success"}
-              </Subtitle>
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: 2,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                <CTAButton
-                  variant="contained"
-                  size="large"
-                  endIcon={<ArrowForwardIcon />}
-                  onClick={() => navigate("/register")}
-                >
-                  Join Our Community
-                </CTAButton>
-                <OutlinedButton
-                  variant="outlined"
-                  size="large"
-                  onClick={() => scrollToContent()}
-                >
-                  Discover More
-                </OutlinedButton>
-              </Box>
-            </Box>
-          </ContentWrapper>
-          <ScrollIndicator onClick={scrollToContent}>
-            <Typography variant="caption" sx={{ fontWeight: 600, letterSpacing: "1px" }}>
-              SCROLL
-            </Typography>
-            <MouseIcon />
-          </ScrollIndicator>
-        </HeroSection>
+    <Box
+      component="section"
+      aria-label="Welcome"
+      sx={{
+        position: "relative",
+        minHeight: { xs: "92vh", md: "100vh" },
+        display: "flex",
+        alignItems: "center",
+        overflow: "hidden",
+        color: "#fff",
+        bgcolor: "#101820",
+      }}
+    >
+      {/* Backdrop: rotating photos, or a branded gradient when there are none */}
+      {slides.length === 0 && (
+        <Box
+          aria-hidden
+          sx={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(1200px 600px at 85% 15%, rgba(232,133,31,0.55), transparent 60%), radial-gradient(900px 500px at 10% 90%, rgba(124,179,66,0.35), transparent 60%), radial-gradient(700px 400px at 60% 70%, rgba(43,166,222,0.25), transparent 60%), #101820",
+          }}
+        />
+      )}
+      {slides.map((slide, i) => (
+        <Box
+          key={slide.image + i}
+          aria-hidden
+          sx={{
+            position: "absolute",
+            inset: 0,
+            opacity: i === active ? 1 : 0,
+            transition: "opacity 1.4s ease",
+            backgroundImage: `url(${slide.image})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            animation: i === active ? `${kenBurns} ${ROTATE_MS + 2000}ms ease-out forwards` : "none",
+          }}
+        />
       ))}
-    </>
+      <Box
+        aria-hidden
+        sx={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(90deg, rgba(12,18,26,0.88) 0%, rgba(12,18,26,0.62) 45%, rgba(12,18,26,0.2) 100%), linear-gradient(0deg, rgba(12,18,26,0.7) 0%, rgba(12,18,26,0) 40%)",
+        }}
+      />
+
+      <Container maxWidth="xl" sx={{ position: "relative", zIndex: 1, pt: { xs: 12, md: 10 }, pb: { xs: 14, md: 12 } }}>
+        <Box sx={{ maxWidth: 780 }} key={active}>
+          <Typography
+            variant="overline"
+            component="p"
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 1,
+              px: 1.5,
+              py: 0.5,
+              mb: 3,
+              borderRadius: 99,
+              border: "1px solid rgba(255,255,255,0.25)",
+              bgcolor: "rgba(255,255,255,0.08)",
+              backdropFilter: "blur(8px)",
+              color: "#fff",
+              animation: `${rise} .7s ease both`,
+            }}
+          >
+            <Box component="span" sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "primary.main" }} />
+            Bhavan's Alumni Association · Vadodara
+          </Typography>
+          <Typography
+            variant="h1"
+            component="h1"
+            sx={{ color: "#fff", animation: `${rise} .8s .1s ease both`, textWrap: "balance" }}
+          >
+            {current.title && current.title !== "Bhavan's Alumni Association" ? current.title : DEFAULT_TITLE}
+          </Typography>
+          <Typography
+            sx={{
+              mt: 3,
+              maxWidth: 600,
+              fontSize: { xs: "1.05rem", md: "1.25rem" },
+              color: "rgba(255,255,255,0.8)",
+              animation: `${rise} .8s .2s ease both`,
+            }}
+          >
+            {current.subtitle && current.subtitle !== "Connecting Alumni, Building Futures"
+              ? current.subtitle
+              : DEFAULT_SUBTITLE}
+          </Typography>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1.5}
+            sx={{ mt: 5, animation: `${rise} .8s .3s ease both` }}
+          >
+            <Button
+              size="large"
+              variant="contained"
+              endIcon={<ArrowForwardRoundedIcon />}
+              onClick={() => navigate(currentUser ? "/dashboard" : "/register")}
+            >
+              {currentUser ? "Go to your dashboard" : "Join the community"}
+            </Button>
+            <Button
+              size="large"
+              variant="outlined"
+              onClick={() => navigate("/events")}
+              sx={{
+                color: "#fff",
+                borderColor: "rgba(255,255,255,0.4)",
+                backdropFilter: "blur(6px)",
+                "&:hover": { borderColor: "#fff", bgcolor: "rgba(255,255,255,0.08)" },
+              }}
+            >
+              Explore events
+            </Button>
+          </Stack>
+        </Box>
+
+        {stats.length > 0 && (
+          <Box
+            sx={{
+              mt: { xs: 7, md: 10 },
+              display: "grid",
+              gridTemplateColumns: { xs: "repeat(2, 1fr)", md: `repeat(${stats.length}, minmax(0, 180px))` },
+              gap: { xs: 3, md: 5 },
+              animation: `${rise} .8s .45s ease both`,
+            }}
+          >
+            {stats.map((s) => (
+              <Box key={s.label} sx={{ borderLeft: "2px solid", borderColor: "primary.main", pl: 2 }}>
+                <Typography sx={{ fontFamily: (t) => t.custom.tokens.fontDisplay, fontSize: { xs: "1.9rem", md: "2.4rem" }, fontWeight: 600, lineHeight: 1 }}>
+                  {s.value}
+                </Typography>
+                <Typography sx={{ mt: 0.75, fontSize: "0.85rem", color: "rgba(255,255,255,0.7)" }}>{s.label}</Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Container>
+
+      {slides.length > 1 && (
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ position: "absolute", zIndex: 2, right: { xs: 88, md: 120 }, bottom: { xs: 38, md: 50 } }}
+        >
+          {slides.map((_, i) => (
+            <Box
+              key={i}
+              component="button"
+              aria-label={`Show slide ${i + 1}`}
+              onClick={() => setActive(i)}
+              sx={{
+                width: i === active ? 28 : 10,
+                height: 10,
+                borderRadius: 99,
+                border: 0,
+                p: 0,
+                cursor: "pointer",
+                bgcolor: i === active ? "primary.main" : "rgba(255,255,255,0.45)",
+                transition: "all .3s ease",
+              }}
+            />
+          ))}
+        </Stack>
+      )}
+
+      <Box
+        component="button"
+        onClick={() => scrollToSection("about-us")}
+        aria-label="Scroll to content"
+        sx={{
+          position: "absolute",
+          zIndex: 2,
+          left: "50%",
+          bottom: 24,
+          transform: "translateX(-50%)",
+          display: { xs: "none", md: "grid" },
+          placeItems: "center",
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          border: "1px solid rgba(255,255,255,0.35)",
+          bgcolor: "transparent",
+          color: "#fff",
+          cursor: "pointer",
+          "&:hover": { bgcolor: "rgba(255,255,255,0.1)" },
+        }}
+      >
+        <KeyboardArrowDownRoundedIcon />
+      </Box>
+    </Box>
   );
 };
 

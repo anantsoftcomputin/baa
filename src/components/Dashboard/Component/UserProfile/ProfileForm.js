@@ -1,624 +1,323 @@
-import React, { useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import {
   Box,
   Button,
-  TextField,
-  Grid,
-  Checkbox,
+  Card,
+  CircularProgress,
   FormControlLabel,
-  Container,
-  Paper,
-  createTheme,
-  Tabs,
-  Tab,
+  Grid,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
 } from "@mui/material";
-import { toast } from "react-toastify";
-import ajaxCall from "../../../helpers/ajaxCall";
-import Breadcrumb from "../../../Ul/Breadcrumb";
-import { useNavigate } from "react-router-dom";
+import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
+import { useAuth } from "../../../../contexts/AuthContext";
+import { getBatchYear, updateUserProfile } from "../../../../firebase/firestore";
+import { uploadProfilePicture } from "../../../../firebase/storage";
+import { logProfileUpdated } from "../../../../firebase/analytics";
+import DashboardHeader from "../../../common/DashboardHeader";
+import UserAvatar from "../../../common/UserAvatar";
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: "#3f51b5",
-    },
-    background: {
-      default: "#f0f2f5",
-      paper: "#ffffff",
-    },
-  },
-});
+const CURRENT_YEAR = new Date().getFullYear();
 
-const tabLabels = [
-  "Personal Information",
-  "Address",
-  "Education",
-  "Professional Information",
-  "Social Media",
-  "Privacy Settings",
-  "Additional Information",
+const TEXT_FIELDS = [
+  "username",
+  "bio",
+  "birth_date",
+  "job_title",
+  "company",
+  "industry",
+  "company_website",
+  "company_address",
+  "company_portfolio",
+  "degree",
+  "major",
+  "year_of_graduation",
+  "phone_number",
+  "alternative_email",
+  "street_address",
+  "city",
+  "state",
+  "country",
+  "postal_code",
+  "linkedin_profile",
+  "twitter_profile",
+  "facebook_profile",
+  "skills",
+  "interests",
+  "achievements",
+  "publications",
+  "mentorship_areas",
 ];
 
-const ProfileForm = ({ userID }) => {
+const asText = (v) => (Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v));
+
+const Section = ({ title, description, children }) => (
+  <Card sx={{ p: { xs: 2.5, md: 3.5 } }}>
+    <Grid container spacing={3}>
+      <Grid item xs={12} md={4}>
+        <Typography variant="h6">{title}</Typography>
+        {description && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {description}
+          </Typography>
+        )}
+      </Grid>
+      <Grid item xs={12} md={8}>
+        {children}
+      </Grid>
+    </Grid>
+  </Card>
+);
+
+/** Edit-profile form. Writes only the member's own, non-privileged fields. */
+const ProfileForm = ({ userID, userProfileData }) => {
   const navigate = useNavigate();
+  const { refreshUserProfile, currentUser } = useAuth();
+  const fileRef = useRef(null);
+
+  const [form, setForm] = useState(() => {
+    const initial = Object.fromEntries(TEXT_FIELDS.map((f) => [f, asText(userProfileData[f])]));
+    initial.username = initial.username || currentUser?.displayName || "";
+    initial.batchyear = asText(getBatchYear(userProfileData));
+    initial.is_mentor = !!userProfileData.is_mentor;
+    initial.show_email = !!userProfileData.show_email;
+    initial.show_phone = !!userProfileData.show_phone;
+    return initial;
+  });
+  const [photo, setPhoto] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
-  const [activeTab, setActiveTab] = useState(0);
-  const [userProfileData, setUserProfileData] = useState({});
 
-  const fetchData = async (url, setData) => {
-    try {
-      const response = await ajaxCall(
-        url,
-        {
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${
-              JSON.parse(localStorage.getItem("loginInfo"))?.accessToken
-            }`,
-          },
-          method: "GET",
-        },
-        8000
-      );
-      if (response?.status === 200) {
-        setData(response.data);
-      } else {
-        console.error("Fetch error:", response);
-      }
-    } catch (error) {
-      console.error("Network error:", error);
+  const set = (name) => (e) => setForm((f) => ({ ...f, [name]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+
+  const validate = () => {
+    const next = {};
+    if (!form.username.trim() || form.username.trim().length < 3) next.username = "Please enter your name (at least 3 characters).";
+    const y = parseInt(form.batchyear, 10);
+    if (form.batchyear && (!Number.isFinite(y) || y < 1950 || y > CURRENT_YEAR)) next.batchyear = `Enter a year between 1950 and ${CURRENT_YEAR}.`;
+    if (!form.batchyear) next.batchyear = "Batch year helps batchmates find you.";
+    if (form.alternative_email && !/^\S+@\S+\.\S+$/.test(form.alternative_email)) next.alternative_email = "Enter a valid email.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const pickPhoto = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+      toast.error("Please choose an image under 10 MB.");
+      return;
     }
+    setPhoto(file);
+    setPreview(URL.createObjectURL(file));
   };
 
-  useEffect(() => {
-    fetchData(`profiles/user-profile/user/${userID}/`, setUserProfileData);
-  }, [userID]);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await ajaxCall(
-          `profiles/user-profile/${userID}/`,
-          {
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${
-                JSON.parse(localStorage.getItem("loginInfo"))?.accessToken
-              }`,
-            },
-            method: "GET",
-          },
-          8000
-        );
-        if (response?.status === 200) {
-          setUserProfileData(response?.data || []);
-        } else {
-          console.error("Fetch error:", response);
-        }
-      } catch (error) {
-        console.error("Network error:", error);
-      }
-    };
-    fetchData();
-  }, [userID]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setUserProfileData((prevData) => ({ ...prevData, [name]: value }));
-    if (errors[name]) {
-      setErrors((prevErrors) => ({ ...prevErrors, [name]: null }));
-    }
-  };
-
-  const handleCheckboxChange = (e) => {
-    const { name, checked } = e.target;
-    setUserProfileData((prevData) => ({ ...prevData, [name]: checked }));
-  };
-
-  const handleFileChange = (e) => {
-    const { name, files } = e.target;
-    if (files.length > 0) {
-      setUserProfileData((prevData) => ({ ...prevData, [name]: files[0] }));
-      if (errors[name]) {
-        setErrors((prevErrors) => ({ ...prevErrors, [name]: null }));
-      }
-    }
-  };
-
-  const handleSubmit = async (e) => {
+  const save = async (e) => {
     e.preventDefault();
-
-    const formDataToSend = new FormData();
-    Object.keys(userProfileData).forEach((key) => {
-      if (userProfileData[key] !== null && userProfileData[key] !== undefined) {
-        if (key === "school_graduation_year") {
-          formDataToSend.append(key, parseInt(userProfileData[key], 10));
-        } else if (
-          key === "profile_picture" ||
-          key === "company_portfolio" ||
-          key === "qr_code"
-        ) {
-          if (userProfileData[key] instanceof File) {
-            formDataToSend.append(key, userProfileData[key]);
-          }
-        } else {
-          formDataToSend.append(key, userProfileData[key]);
-        }
-      }
-    });
-
+    if (!validate()) {
+      toast.error("Please fix the highlighted fields.");
+      return;
+    }
+    setSaving(true);
     try {
-      const response = await ajaxCall(
-        `profiles/user-profile/${userProfileData.id}/`,
-        {
-          method: "PATCH",
-          body: formDataToSend,
-          headers: {
-            Authorization: `Bearer ${
-              JSON.parse(localStorage.getItem("loginInfo"))?.accessToken
-            }`,
-          },
-        },
-        8000
-      );
-      if ([200, 201].includes(response.status)) {
-        toast.success("Profile Updated Successfully");
-        navigate("/dashboard/userProfile");
-        setErrors({});
-      } else {
-        if (response.data && typeof response.data === "object") {
-          setErrors(response.data);
-          toast.error("Please correct the errors in the form.");
-        } else {
-          toast.error("An error occurred. Please try again.");
-        }
-      }
+      const updates = Object.fromEntries(TEXT_FIELDS.map((f) => [f, (form[f] || "").trim()]));
+      updates.batchyear = parseInt(form.batchyear, 10) || null;
+      updates.is_mentor = form.is_mentor;
+      updates.show_email = form.show_email;
+      updates.show_phone = form.show_phone;
+      if (photo) updates.profile_picture = await uploadProfilePicture(userID, photo);
+      await updateUserProfile(userID, updates);
+      logProfileUpdated();
+      await refreshUserProfile();
+      toast.success("Profile saved");
+      navigate("/dashboard/userProfile");
     } catch (error) {
-      toast.error("Network error. Please try again.");
+      console.error("Error saving profile:", error);
+      toast.error("Couldn't save your profile. Please try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
-  const renderTabContent = (tab) => {
-    switch (tab) {
-      case 0:
-        return (
-          <Grid container spacing={2} mt={2}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                type="number"
-                label="School Graduation Year"
-                name="school_graduation_year"
-                InputLabelProps={{ shrink: true }}
-                value={userProfileData.school_graduation_year || ""}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                type="date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                label="Birth Date"
-                name="birth_date"
-                value={userProfileData.birth_date || ""}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Phone Number"
-                name="phone_number"
-                value={userProfileData.phone_number || ""}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Alternative Email"
-                name="alternative_email"
-                value={userProfileData.alternative_email || ""}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Bio"
-                name="bio"
-                value={userProfileData.bio || ""}
-                onChange={handleChange}
-                size="small"
-                multiline
-                rows={3}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                type="file"
-                label="Profile Picture"
-                name="profile_picture"
-                InputLabelProps={{ shrink: true }}
-                onChange={handleFileChange}
-                size="small"
-              />
-            </Grid>
-          </Grid>
-        );
-      case 1:
-        return (
-          <Grid container spacing={2} mt={2}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Street Address"
-                name="street_address"
-                value={userProfileData.street_address}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="City"
-                name="city"
-                value={userProfileData.city}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="State"
-                name="state"
-                value={userProfileData.state}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Country"
-                name="country"
-                value={userProfileData.country}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Postal Code"
-                name="postal_code"
-                value={userProfileData.postal_code}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-          </Grid>
-        );
-      case 2:
-        return (
-          <Grid container spacing={2} mt={2}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Education"
-                name="Education"
-                value={userProfileData.Education}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Degree"
-                name="degree"
-                value={userProfileData.degree}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Major"
-                name="major"
-                value={userProfileData.major}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Year of Graduation"
-                name="year_of_graduation"
-                value={userProfileData.year_of_graduation}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-          </Grid>
-        );
-      case 3:
-        return (
-          <Grid container spacing={2} mt={2}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Company"
-                name="company"
-                value={userProfileData.company}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Company Address"
-                name="company_address"
-                value={userProfileData.company_address}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Company Website"
-                name="company_website"
-                value={userProfileData.company_website}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Job Title"
-                name="job_title"
-                value={userProfileData.job_title}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Industry"
-                name="industry"
-                value={userProfileData.industry}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                type="file"
-                InputLabelProps={{ shrink: true }}
-                label="Company Portfolio"
-                name="company_portfolio"
-                onChange={handleFileChange}
-                size="small"
-              />
-            </Grid>
-          </Grid>
-        );
-      case 4:
-        return (
-          <Grid container spacing={2} mt={2}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="LinkedIn Profile"
-                name="linkedin_profile"
-                value={userProfileData.linkedin_profile}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Twitter"
-                name="twitter_profile"
-                value={userProfileData.twitter_profile}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Facebook"
-                name="facebook_profile"
-                value={userProfileData.facebook_profile}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-          </Grid>
-        );
-      case 5:
-        return (
-          <Grid container spacing={2} mt={2}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Mentorship Areas"
-                name="mentorship_areas"
-                value={userProfileData.mentorship_areas}
-                onChange={handleChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={userProfileData.is_mentor}
-                    onChange={handleCheckboxChange}
-                    size="small"
-                    name="is_mentor"
-                  />
-                }
-                label="Is Mentor"
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={userProfileData.show_email}
-                    onChange={handleCheckboxChange}
-                    size="small"
-                    name="show_email"
-                  />
-                }
-                label="Show Email"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={userProfileData.show_phone}
-                    onChange={handleCheckboxChange}
-                    size="small"
-                    name="show_phone"
-                  />
-                }
-                label="Show Phone"
-              />
-            </Grid>
-          </Grid>
-        );
-      case 6:
-        return (
-          <Grid container spacing={2} mt={2}>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Interest"
-                name="interests"
-                value={userProfileData.interests}
-                size="small"
-                onChange={handleChange}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Skills"
-                name="skills"
-                value={userProfileData.skills}
-                size="small"
-                onChange={handleChange}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Achievements"
-                name="achievements"
-                value={userProfileData.achievements}
-                size="small"
-                onChange={handleChange}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Publications"
-                name="publications"
-                value={userProfileData.publications}
-                size="small"
-                onChange={handleChange}
-              />
-            </Grid>
-          </Grid>
-        );
-      default:
-        return null;
-    }
-  };
+  const tf = (name, label, props = {}) => (
+    <TextField
+      fullWidth
+      name={name}
+      label={label}
+      value={form[name] ?? ""}
+      onChange={set(name)}
+      error={!!errors[name]}
+      helperText={errors[name] || props.helperText}
+      {...props}
+    />
+  );
 
   return (
-    <Container sx={{ mt: 10 }}>
-      <Box>
-        <Paper
-          elevation={3}
-          sx={{
-            p: 3,
-            backgroundColor: theme.palette.background.paper,
-            boxShadow: "0 4px 8px rgba(251, 166, 69, 0.5)",
-          }}
-        >
-          <Breadcrumb title="Update Profile" main="Dashboard" />
-          <Tabs
-            value={activeTab}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            aria-label="Profile form tabs"
-          >
-            {tabLabels.map((label, index) => (
-              <Tab key={index} label={label} />
-            ))}
-          </Tabs>
-          <Box sx={{ mt: 3 }}>{renderTabContent(activeTab)}</Box>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "flex-end",
-              mt: 3,
-            }}
-          >
-            {activeTab < tabLabels.length - 1 && (
-              <Button
-                size="small"
-                variant="contained"
-                color="primary"
-                onClick={() => setActiveTab((prevTab) => prevTab + 1)}
-              >
-                Next
+    <Box component="form" onSubmit={save} sx={{ maxWidth: 1000, mx: "auto" }}>
+      <DashboardHeader
+        title="Edit profile"
+        subtitle="A complete profile helps batchmates recognise and reach you."
+        actions={
+          <>
+            <Button color="inherit" onClick={() => navigate("/dashboard/userProfile")}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained" disabled={saving}>
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </>
+        }
+      />
+
+      <Stack spacing={3}>
+        <Section title="Basics" description="How you appear across the portal.">
+          <Stack direction="row" spacing={2.5} alignItems="center" sx={{ mb: 3 }}>
+            <UserAvatar user={userProfileData} name={form.username} src={preview || undefined} size={88} />
+            <Box>
+              <Button variant="outlined" startIcon={<PhotoCameraRoundedIcon />} onClick={() => fileRef.current?.click()}>
+                {preview || userProfileData.profile_picture || userProfileData.photoURL ? "Change photo" : "Upload photo"}
               </Button>
-            )}
-          </Box>
-        </Paper>
-        <Grid item xs={12} container justifyContent="center" mt={4}>
-          <Button
-            size="small"
-            variant="contained"
-            color="primary"
-            type="submit"
-            onClick={handleSubmit}
-          >
-            Submit
+              <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.75 }}>
+                JPG or PNG, up to 10 MB.
+              </Typography>
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickPhoto} />
+            </Box>
+          </Stack>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={8}>
+              {tf("username", "Full name", { required: true })}
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              {tf("batchyear", "Batch year", { required: true, inputProps: { inputMode: "numeric" } })}
+            </Grid>
+            <Grid item xs={12}>
+              {tf("bio", "Bio", { multiline: true, minRows: 3, helperText: "A few lines about you — what you do, what you're into." })}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("birth_date", "Birthday", { type: "date", InputLabelProps: { shrink: true } })}
+            </Grid>
+          </Grid>
+        </Section>
+
+        <Section title="Work" description="Help alumni find you for opportunities and mentorship.">
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              {tf("job_title", "Job title")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("company", "Company")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("industry", "Industry")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("company_website", "Company website")}
+            </Grid>
+            <Grid item xs={12}>
+              {tf("company_address", "Office address")}
+            </Grid>
+            <Grid item xs={12}>
+              {tf("company_portfolio", "Portfolio / about your work", { multiline: true, minRows: 2 })}
+            </Grid>
+          </Grid>
+        </Section>
+
+        <Section title="Education" description="Studies after Bhavan's.">
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={5}>
+              {tf("degree", "Degree")}
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              {tf("major", "Major / specialisation")}
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              {tf("year_of_graduation", "Year", { inputProps: { inputMode: "numeric" } })}
+            </Grid>
+          </Grid>
+        </Section>
+
+        <Section title="Contact" description="Your address is only visible to you. Choose below whether others see your email and phone.">
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              {tf("phone_number", "Phone", { inputProps: { inputMode: "tel" } })}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("alternative_email", "Alternate email", { type: "email" })}
+            </Grid>
+            <Grid item xs={12}>
+              {tf("street_address", "Street address")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("city", "City")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("state", "State")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("country", "Country")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("postal_code", "Postal code")}
+            </Grid>
+          </Grid>
+          <Stack sx={{ mt: 2 }}>
+            <FormControlLabel control={<Switch checked={form.show_email} onChange={set("show_email")} />} label="Show my email to other members" />
+            <FormControlLabel control={<Switch checked={form.show_phone} onChange={set("show_phone")} />} label="Show my phone number to other members" />
+          </Stack>
+        </Section>
+
+        <Section title="Links">
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              {tf("linkedin_profile", "LinkedIn URL")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("twitter_profile", "X / Twitter URL")}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("facebook_profile", "Facebook URL")}
+            </Grid>
+          </Grid>
+        </Section>
+
+        <Section title="Interests & achievements" description="Separate skills and interests with commas.">
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              {tf("skills", "Skills", { placeholder: "e.g. Marketing, Python, Public speaking" })}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              {tf("interests", "Interests", { placeholder: "e.g. Cricket, Photography" })}
+            </Grid>
+            <Grid item xs={12}>
+              {tf("achievements", "Achievements", { multiline: true, minRows: 2 })}
+            </Grid>
+            <Grid item xs={12}>
+              {tf("publications", "Publications", { multiline: true, minRows: 2 })}
+            </Grid>
+          </Grid>
+        </Section>
+
+        <Section title="Mentorship" description="Offer guidance to students and younger alumni.">
+          <FormControlLabel control={<Switch checked={form.is_mentor} onChange={set("is_mentor")} />} label="I'm open to mentoring" />
+          {form.is_mentor && <Box sx={{ mt: 2 }}>{tf("mentorship_areas", "Areas you can help with", { placeholder: "e.g. Careers in finance, Studying abroad" })}</Box>}
+        </Section>
+
+        <Stack direction="row" spacing={1.5} justifyContent="flex-end">
+          <Button color="inherit" onClick={() => navigate("/dashboard/userProfile")}>
+            Cancel
           </Button>
-        </Grid>
-      </Box>
-    </Container>
+          <Button type="submit" variant="contained" size="large" disabled={saving} startIcon={saving ? <CircularProgress size={18} color="inherit" /> : null}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        </Stack>
+      </Stack>
+    </Box>
   );
 };
 
