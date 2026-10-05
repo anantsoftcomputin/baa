@@ -140,7 +140,10 @@ service cloud.firestore {
     // Document id is `${eventId}_${userId}`.
     // Paid registrations are confirmed only by the `verifyPayment` Cloud Function.
     match /eventRegistrations/{registrationId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      // `resource == null` lets members check whether they have registered yet
+      // (reading a missing document reveals nothing).
+      allow read: if isAdmin() ||
+                     (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid));
 
       allow create: if isEmailVerified() &&
                        request.resource.data.userId == request.auth.uid &&

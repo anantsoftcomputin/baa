@@ -1,477 +1,304 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
-  Typography,
-  Paper,
+  Button,
   Chip,
-  TextField,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Grid,
+  IconButton,
+  InputAdornment,
   MenuItem,
   Select,
-  FormControl,
-  InputLabel,
-  Grid,
-  Card,
-  CardContent,
-  InputAdornment,
+  Stack,
+  TextField,
   Tooltip,
-  IconButton,
+  Typography,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import DeleteIcon from "@mui/icons-material/Delete";
-import SearchIcon from "@mui/icons-material/Search";
-import FilterListIcon from "@mui/icons-material/FilterList";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import PendingIcon from "@mui/icons-material/Pending";
-import EmailIcon from "@mui/icons-material/Email";
-import PhoneIcon from "@mui/icons-material/Phone";
-import GroupIcon from "@mui/icons-material/Group";
-import PersonIcon from "@mui/icons-material/Person";
-import {
-  getContactSubmissions,
-  updateContactStatus,
-  deleteContactSubmission,
-} from "../../../firebase/firestore";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import MailRoundedIcon from "@mui/icons-material/MailRounded";
+import FiberNewRoundedIcon from "@mui/icons-material/FiberNewRounded";
+import ForwardToInboxRoundedIcon from "@mui/icons-material/ForwardToInboxRounded";
+import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
 import { toast } from "react-toastify";
+import { getContactSubmissions, updateContactStatus, deleteContactSubmission } from "../../../firebase/firestore";
+import AdminStat from "./AdminStat";
+import { formatDate, toDate } from "../../../utils/format";
 
+export const GROUPS = {
+  general: "General inquiry",
+  membership: "Membership",
+  events: "Events",
+  alumni: "Alumni relations",
+  support: "Website support",
+};
+
+const STATUSES = [
+  { value: "new", label: "New", color: "error" },
+  { value: "contacted", label: "Contacted", color: "warning" },
+  { value: "resolved", label: "Resolved", color: "success" },
+];
+
+
+const Detail = ({ label, children }) =>
+  children ? (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}
+      </Typography>
+      <Typography sx={{ whiteSpace: "pre-line", wordBreak: "break-word" }}>{children}</Typography>
+    </Box>
+  ) : null;
+
+/** Messages sent through the website's contact form. */
 const ContactsManager = () => {
   const [contacts, setContacts] = useState([]);
-  const [filteredContacts, setFilteredContacts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
-  const [stats, setStats] = useState({
-    total: 0,
-    new: 0,
-    contacted: 0,
-    resolved: 0,
-    byGroup: {},
-  });
+  const [viewing, setViewing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  useEffect(() => {
-    fetchContacts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contacts, searchQuery, statusFilter, groupFilter]);
-
-  const fetchContacts = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await getContactSubmissions();
-      setContacts(data);
-      calculateStats(data);
-    } catch (error) {
-      console.error("Error fetching contacts:", error);
-      toast.error("Failed to load contacts");
+      setContacts(await getContactSubmissions());
+    } catch (e) {
+      console.error("Error fetching contacts:", e);
+      toast.error("Couldn't load messages");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const calculateStats = (data) => {
-    const stats = {
-      total: data.length,
-      new: data.filter((c) => c.status === "new").length,
-      contacted: data.filter((c) => c.status === "contacted").length,
-      resolved: data.filter((c) => c.status === "resolved").length,
-      byGroup: {},
-    };
+  useEffect(() => {
+    load();
+  }, [load]);
 
-    data.forEach((contact) => {
-      const group = contact.group || "general";
-      stats.byGroup[group] = (stats.byGroup[group] || 0) + 1;
-    });
+  const stats = useMemo(() => {
+    const count = (s) => contacts.filter((c) => (c.status || "new") === s).length;
+    return { total: contacts.length, new: count("new"), contacted: count("contacted"), resolved: count("resolved") };
+  }, [contacts]);
 
-    setStats(stats);
-  };
-
-  const applyFilters = () => {
-    let filtered = [...contacts];
-
-    // Search filter
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (contact) =>
-          contact.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          contact.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          contact.phone?.includes(searchQuery)
-      );
-    }
-
-    // Status filter
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((contact) => contact.status === statusFilter);
-    }
-
-    // Group filter
-    if (groupFilter !== "all") {
-      filtered = filtered.filter((contact) => (contact.group || "general") === groupFilter);
-    }
-
-    setFilteredContacts(filtered);
-  };
-
-  const handleStatusChange = async (contactId, newStatus) => {
+  const setStatus = async (contact, status) => {
+    const before = contact.status;
+    setContacts((list) => list.map((c) => (c.id === contact.id ? { ...c, status } : c)));
+    setViewing((v) => (v && v.id === contact.id ? { ...v, status } : v));
     try {
-      await updateContactStatus(contactId, newStatus);
-      toast.success("Status updated successfully");
-      fetchContacts();
-    } catch (error) {
-      console.error("Error updating status:", error);
-      toast.error("Failed to update status");
+      await updateContactStatus(contact.id, status);
+    } catch (e) {
+      setContacts((list) => list.map((c) => (c.id === contact.id ? { ...c, status: before } : c)));
+      toast.error("Couldn't update the status");
     }
   };
 
-  const handleDelete = async (contactId) => {
-    if (window.confirm("Are you sure you want to delete this contact?")) {
-      try {
-        await deleteContactSubmission(contactId);
-        toast.success("Contact deleted successfully");
-        fetchContacts();
-      } catch (error) {
-        console.error("Error deleting contact:", error);
-        toast.error("Failed to delete contact");
-      }
+  const remove = async () => {
+    const c = confirmDelete;
+    try {
+      await deleteContactSubmission(c.id);
+      setContacts((list) => list.filter((x) => x.id !== c.id));
+      setViewing(null);
+      toast.success("Message deleted");
+    } catch (e) {
+      toast.error("Couldn't delete the message");
+    } finally {
+      setConfirmDelete(null);
     }
   };
 
-
-  const getGroupColor = (group) => {
-    const colors = {
-      general: "#757575",
-      membership: "#1976d2",
-      events: "#f57c00",
-      alumni: "#7b1fa2",
-      support: "#388e3c",
-    };
-    return colors[group] || "#757575";
-  };
+  const q = search.trim().toLowerCase();
+  const filtered = contacts.filter((c) => {
+    if (statusFilter !== "all" && (c.status || "new") !== statusFilter) return false;
+    if (groupFilter !== "all" && (c.group || "general") !== groupFilter) return false;
+    if (!q) return true;
+    return [c.name, c.email, c.phone, c.message, c.address].filter(Boolean).join(" ").toLowerCase().includes(q);
+  });
 
   const columns = [
     {
       field: "name",
-      headerName: "Name",
-      width: 180,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <PersonIcon sx={{ mr: 1, color: "#E8851F" }} />
-          <Typography variant="body2" fontWeight="bold">
-            {params.value}
+      headerName: "From",
+      flex: 1,
+      minWidth: 200,
+      renderCell: (p) => (
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="body2" sx={{ fontWeight: (p.row.status || "new") === "new" ? 800 : 600 }} noWrap>
+            {p.value || "—"}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" noWrap component="div">
+            {p.row.email}
           </Typography>
         </Box>
       ),
     },
-    {
-      field: "email",
-      headerName: "Email",
-      width: 220,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <EmailIcon sx={{ mr: 1, color: "#1976d2", fontSize: 18 }} />
-          <Typography variant="body2">{params.value}</Typography>
-        </Box>
-      ),
-    },
-    {
-      field: "phone",
-      headerName: "Phone",
-      width: 150,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <PhoneIcon sx={{ mr: 1, color: "#388e3c", fontSize: 18 }} />
-          <Typography variant="body2">{params.value}</Typography>
-        </Box>
-      ),
-    },
-    {
-      field: "address",
-      headerName: "Address",
-      width: 200,
-      renderCell: (params) => (
-        <Tooltip title={params.value || ""}>
-          <Typography
-            variant="body2"
-            sx={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {params.value}
-          </Typography>
-        </Tooltip>
-      ),
-    },
-    {
-      field: "message",
-      headerName: "Message",
-      width: 280,
-      renderCell: (params) => (
-        <Tooltip title={params.value || ""}>
-          <Typography variant="body2" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {params.value || "—"}
-          </Typography>
-        </Tooltip>
-      ),
-    },
-    {
-      field: "group",
-      headerName: "Group",
-      width: 150,
-      renderCell: (params) => (
-        <Chip
-          label={params.value || "general"}
-          size="small"
-          icon={<GroupIcon />}
-          sx={{
-            backgroundColor: getGroupColor(params.value || "general"),
-            color: "#fff",
-            fontWeight: "bold",
-          }}
-        />
-      ),
-    },
+    { field: "group", headerName: "Topic", width: 150, valueGetter: (value) => GROUPS[value || "general"] || value },
+    { field: "message", headerName: "Message", flex: 1.6, minWidth: 220, valueGetter: (value) => value || "—" },
     {
       field: "status",
       headerName: "Status",
       width: 150,
-      renderCell: (params) => (
-        <FormControl size="small" fullWidth>
-          <Select
-            value={params.value || "new"}
-            onChange={(e) => handleStatusChange(params.row.id, e.target.value)}
-            sx={{ fontSize: "0.875rem" }}
-          >
-            <MenuItem value="new">
-              <Box sx={{ display: "flex", alignItems: "center" }}>
-                <PendingIcon sx={{ mr: 1, fontSize: 18 }} />
-                New
-              </Box>
+      renderCell: (p) => (
+        <Select
+          size="small"
+          value={p.row.status || "new"}
+          onChange={(e) => setStatus(p.row, e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          inputProps={{ "aria-label": "Status" }}
+          sx={{ fontSize: "0.85rem", minWidth: 128 }}
+        >
+          {STATUSES.map((s) => (
+            <MenuItem key={s.value} value={s.value}>
+              <Chip size="small" label={s.label} color={s.color} sx={{ pointerEvents: "none" }} />
             </MenuItem>
-            <MenuItem value="contacted">
-              <Box sx={{ display: "flex", alignItems: "center" }}>
-                <EmailIcon sx={{ mr: 1, fontSize: 18 }} />
-                Contacted
-              </Box>
-            </MenuItem>
-            <MenuItem value="resolved">
-              <Box sx={{ display: "flex", alignItems: "center" }}>
-                <CheckCircleIcon sx={{ mr: 1, fontSize: 18 }} />
-                Resolved
-              </Box>
-            </MenuItem>
-          </Select>
-        </FormControl>
+          ))}
+        </Select>
       ),
     },
     {
       field: "createdAt",
-      headerName: "Date",
-      width: 150,
-      valueGetter: (params) => {
-        if (params?.seconds) {
-          return new Date(params.seconds * 1000).toLocaleDateString();
-        }
-        return "N/A";
-      },
+      headerName: "Received",
+      width: 120,
+      valueGetter: (value) => toDate(value)?.getTime() || 0,
+      valueFormatter: (value) => (value ? formatDate(value) : "—"),
     },
     {
       field: "actions",
-      headerName: "Actions",
-      width: 100,
+      headerName: "",
+      width: 96,
       sortable: false,
-      renderCell: (params) => (
-        <Tooltip title="Delete">
-          <IconButton
-            color="error"
-            onClick={() => handleDelete(params.row.id)}
-            size="small"
-          >
-            <DeleteIcon />
-          </IconButton>
-        </Tooltip>
+      align: "right",
+      renderCell: (p) => (
+        <Box>
+          <Tooltip title="View">
+            <IconButton size="small" aria-label={`View message from ${p.row.name}`} onClick={() => setViewing(p.row)}>
+              <VisibilityRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <IconButton size="small" color="error" aria-label={`Delete message from ${p.row.name}`} onClick={() => setConfirmDelete(p.row)}>
+              <DeleteOutlineRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       ),
     },
   ];
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Contact Submissions
-      </Typography>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography variant="h5">Messages</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Messages sent through the website's contact form.
+        </Typography>
+      </Box>
 
-      {/* Statistics Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: "linear-gradient(160deg, #17212E 0%, #0E1620 100%)",
-              color: "#fff",
-            }}
-          >
-            <CardContent>
-              <Typography variant="h3" fontWeight="bold">
-                {stats.total}
-              </Typography>
-              <Typography variant="body2">Total Contacts</Typography>
-            </CardContent>
-          </Card>
+      <Grid container spacing={2} sx={{ mb: 2.5 }}>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="All messages" value={stats.total} icon={MailRoundedIcon} active={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: "linear-gradient(135deg, #E8851F 0%, #D9611A 100%)",
-              color: "#fff",
-            }}
-          >
-            <CardContent>
-              <Typography variant="h3" fontWeight="bold">
-                {stats.new}
-              </Typography>
-              <Typography variant="body2">New Submissions</Typography>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="New" value={stats.new} icon={FiberNewRoundedIcon} color="error.main" active={statusFilter === "new"} onClick={() => setStatusFilter("new")} />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: "linear-gradient(135deg, #E8851F 0%, #f76b1c 100%)",
-              color: "#fff",
-            }}
-          >
-            <CardContent>
-              <Typography variant="h3" fontWeight="bold">
-                {stats.contacted}
-              </Typography>
-              <Typography variant="body2">Contacted</Typography>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="Contacted" value={stats.contacted} icon={ForwardToInboxRoundedIcon} color="warning.main" active={statusFilter === "contacted"} onClick={() => setStatusFilter("contacted")} />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: "linear-gradient(135deg, #2BA6DE 0%, #1F7FB0 100%)",
-              color: "#fff",
-            }}
-          >
-            <CardContent>
-              <Typography variant="h3" fontWeight="bold">
-                {stats.resolved}
-              </Typography>
-              <Typography variant="body2">Resolved</Typography>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="Resolved" value={stats.resolved} icon={TaskAltRoundedIcon} color="success.main" active={statusFilter === "resolved"} onClick={() => setStatusFilter("resolved")} />
         </Grid>
       </Grid>
 
-      {/* Group Statistics */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Typography variant="h6" gutterBottom fontWeight="bold">
-          Contacts by Group
-        </Typography>
-        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mt: 2 }}>
-          {Object.entries(stats.byGroup).map(([group, count]) => (
-            <Chip
-              key={group}
-              label={`${group}: ${count}`}
-              icon={<GroupIcon />}
-              sx={{
-                backgroundColor: getGroupColor(group),
-                color: "#fff",
-                fontWeight: "bold",
-                fontSize: "1rem",
-                padding: "10px",
-              }}
-            />
-          ))}
-        </Box>
-      </Paper>
-
-      {/* Filters */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-          <FilterListIcon sx={{ mr: 1, color: "#E8851F" }} />
-          <Typography variant="h6" fontWeight="bold">
-            Filters
-          </Typography>
-        </Box>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              placeholder="Search by name, email, or phone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                label="Status"
-              >
-                <MenuItem value="all">All Statuses</MenuItem>
-                <MenuItem value="new">New</MenuItem>
-                <MenuItem value="contacted">Contacted</MenuItem>
-                <MenuItem value="resolved">Resolved</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <FormControl fullWidth>
-              <InputLabel>Group</InputLabel>
-              <Select
-                value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
-                label="Group"
-              >
-                <MenuItem value="all">All Groups</MenuItem>
-                <MenuItem value="general">General Inquiry</MenuItem>
-                <MenuItem value="membership">Membership</MenuItem>
-                <MenuItem value="events">Events</MenuItem>
-                <MenuItem value="alumni">Alumni Relations</MenuItem>
-                <MenuItem value="support">Support</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Data Grid */}
-      <Paper sx={{ borderRadius: 2, overflow: "hidden" }}>
-        <DataGrid
-          rows={filteredContacts}
-          columns={columns}
-          pageSize={10}
-          rowsPerPageOptions={[10, 25, 50]}
-          loading={loading}
-          autoHeight
-          disableSelectionOnClick
-          sx={{
-            "& .MuiDataGrid-cell": {
-              borderBottom: "1px solid #f0f0f0",
-            },
-            "& .MuiDataGrid-columnHeaders": {
-              backgroundColor: "#fef9f5",
-              fontWeight: "bold",
-              borderBottom: "2px solid #E8851F",
-            },
-          }}
+      <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          placeholder="Search name, email, phone or message…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ flexGrow: 1 }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon fontSize="small" /></InputAdornment> }}
         />
-      </Paper>
+        <TextField select size="small" label="Topic" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} sx={{ minWidth: 190 }}>
+          <MenuItem value="all">All topics</MenuItem>
+          {Object.entries(GROUPS).map(([k, v]) => (
+            <MenuItem key={k} value={k}>{v}</MenuItem>
+          ))}
+        </TextField>
+      </Stack>
+
+      <DataGrid
+        autoHeight
+        rows={filtered}
+        columns={columns}
+        loading={loading}
+        rowHeight={60}
+        pageSizeOptions={[10, 25, 50]}
+        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+        disableRowSelectionOnClick
+        localeText={{ noRowsLabel: contacts.length ? "No messages match these filters" : "No messages yet" }}
+        sx={{ "& .MuiDataGrid-cell": { display: "flex", alignItems: "center" } }}
+      />
+
+      <Dialog open={!!viewing} onClose={() => setViewing(null)} maxWidth="sm" fullWidth>
+        {viewing && (
+          <>
+            <DialogTitle>
+              Message from {viewing.name}
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 400 }}>
+                {GROUPS[viewing.group || "general"] || viewing.group} · {formatDate(viewing.createdAt) || "—"}
+              </Typography>
+            </DialogTitle>
+            <DialogContent dividers>
+              <Stack spacing={2}>
+                <Detail label="Message">{viewing.message || "(no message)"}</Detail>
+                <Detail label="Email">{viewing.email}</Detail>
+                <Detail label="Phone">{viewing.phone}</Detail>
+                <Detail label="City / address">{viewing.address}</Detail>
+                <TextField select size="small" label="Status" value={viewing.status || "new"} onChange={(e) => setStatus(viewing, e.target.value)} sx={{ maxWidth: 200 }}>
+                  {STATUSES.map((s) => (
+                    <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button color="error" onClick={() => setConfirmDelete(viewing)} sx={{ mr: "auto" }}>
+                Delete
+              </Button>
+              {viewing.email && (
+                <Button
+                  variant="contained"
+                  startIcon={<ReplyRoundedIcon />}
+                  href={`mailto:${viewing.email}?subject=${encodeURIComponent("Re: your message to the BAA Alumni Association")}`}
+                  onClick={() => (viewing.status || "new") === "new" && setStatus(viewing, "contacted")}
+                >
+                  Reply by email
+                </Button>
+              )}
+              <Button onClick={() => setViewing(null)}>Close</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete this message?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>The message from {confirmDelete?.name} will be permanently deleted.</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={remove}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

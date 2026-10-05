@@ -1,501 +1,365 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Button,
-  TextField,
-  Typography,
-  CircularProgress,
-  Paper,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  MenuItem,
-  Select,
-  FormHelperText,
-  FormControl,
-  InputLabel,
   Chip,
-  Avatar,
-  InputAdornment,
-  Tooltip,
-  Card,
-  CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  FormControlLabel,
   Grid,
+  IconButton,
+  InputAdornment,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Tooltip,
+  Typography,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Search as SearchIcon,
-  Email as EmailIcon,
-  Person as PersonIcon,
-  AdminPanelSettings as AdminIcon,
-  Group as GroupIcon,
-} from "@mui/icons-material";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
+import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
+import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import RemoveCircleOutlineRoundedIcon from "@mui/icons-material/RemoveCircleOutlineRounded";
 import { toast } from "react-toastify";
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../firebase/config";
 import { useAuth } from "../../../contexts/AuthContext";
+import { getBatchYear, getUsersByYear } from "../../../firebase/firestore";
+import { logAdminAction } from "../../../firebase/analytics";
+import UserAvatar from "../../common/UserAvatar";
+import AdminStat from "./AdminStat";
+import { formatDate, toDate } from "../../../utils/format";
+
+const ROLES = ["User", "Admin", "Superuser"];
+const roleColor = { Superuser: "error", Admin: "warning" };
+const isAdminRole = (r) => r === "Admin" || r === "Superuser";
+
+const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+
+const exportCsv = (users) => {
+  const header = ["Name", "Email", "Batch", "Role", "Member", "Email verified", "Phone", "City", "Company", "Joined"];
+  const lines = users.map((u) =>
+    [u.username, u.email, getBatchYear(u), u.userRole || "User", u.is_member ? "Yes" : "No", u.emailVerified ? "Yes" : "No", u.phone_number, u.city, u.company, formatDate(u.createdAt)]
+      .map(csvCell)
+      .join(",")
+  );
+  const blob = new Blob([[header.map(csvCell).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `baa-members-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
 const UserManagement = () => {
+  const navigate = useNavigate();
   const { isSuperuser, currentUser } = useAuth();
   const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [memberFilter, setMemberFilter] = useState("all");
-  const [stats, setStats] = useState({
-    total: 0,
-    members: 0,
-    admins: 0,
-    verified: 0,
-  });
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  useEffect(() => {
-    fetchUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Fetch everyone and sort here: a database orderBy would silently drop
+      // profiles that have no createdAt field.
+      const all = await getUsersByYear();
+      all.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+      setUsers(all);
+    } catch (e) {
+      console.error("Error fetching users:", e);
+      toast.error("Couldn't load users");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    applyFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users, searchQuery, roleFilter, memberFilter]);
+    load();
+  }, [load]);
 
-  const fetchUsers = async () => {
+  const stats = useMemo(
+    () => ({
+      total: users.length,
+      members: users.filter((u) => u.is_member).length,
+      admins: users.filter((u) => isAdminRole(u.userRole)).length,
+      verified: users.filter((u) => u.emailVerified).length,
+    }),
+    [users]
+  );
+
+  const q = search.trim().toLowerCase();
+  const filtered = users.filter((u) => {
+    if (roleFilter !== "all" && (u.userRole || "User") !== roleFilter) return false;
+    if (memberFilter === "members" && !u.is_member) return false;
+    if (memberFilter === "non-members" && u.is_member) return false;
+    if (!q) return true;
+    return [u.username, u.email, getBatchYear(u), u.company, u.city, u.phone_number].filter(Boolean).join(" ").toLowerCase().includes(q);
+  });
+
+  const original = editing && users.find((u) => u.id === editing.id);
+  const isSelf = editing?.id === currentUser?.uid;
+
+  const save = async () => {
+    setSaving(true);
     try {
-      setLoading(true);
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const usersData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setUsers(usersData);
-      calculateStats(usersData);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      toast.error("Failed to load users");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const calculateStats = (data) => {
-    const stats = {
-      total: data.length,
-      members: data.filter((u) => u.is_member).length,
-      admins: data.filter((u) => u.userRole === "Admin" || u.userRole === "Superuser").length,
-      verified: data.filter((u) => u.emailVerified).length,
-    };
-    setStats(stats);
-  };
-
-  const applyFilters = () => {
-    let filtered = [...users];
-
-    // Search filter
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (user) =>
-          user.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.batchyear?.toString().includes(searchQuery)
-      );
-    }
-
-    // Role filter
-    if (roleFilter !== "all") {
-      filtered = filtered.filter((user) => user.userRole === roleFilter);
-    }
-
-    // Member filter
-    if (memberFilter === "members") {
-      filtered = filtered.filter((user) => user.is_member === true);
-    } else if (memberFilter === "non-members") {
-      filtered = filtered.filter((user) => !user.is_member);
-    }
-
-    setFilteredUsers(filtered);
-  };
-
-  const handleOpenDialog = (user) => {
-    setEditingUser(user);
-    setOpenDialog(true);
-  };
-
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-    setEditingUser(null);
-  };
-
-  const handleUpdateUser = async () => {
-    if (!editingUser) return;
-
-    try {
-      setLoading(true);
-      const original = users.find((u) => u.id === editingUser.id) || {};
-      const updates = { is_member: !!editingUser.is_member };
-      if (updates.is_member && !original.is_member) updates.membershipDate = serverTimestamp();
-      // Only Superusers may change roles (enforced by the security rules too).
-      if (isSuperuser && (editingUser.userRole || "User") !== (original.userRole || "User")) {
-        updates.userRole = editingUser.userRole;
+      const updates = {};
+      if (!!editing.is_member !== !!original.is_member) {
+        updates.is_member = !!editing.is_member;
+        updates.membershipDate = editing.is_member ? serverTimestamp() : null;
       }
-      await updateDoc(doc(db, "users", editingUser.id), updates);
-      toast.success("User updated successfully!");
-      handleCloseDialog();
-      fetchUsers();
-    } catch (error) {
-      console.error("Error updating user:", error);
-      toast.error("Failed to update user");
+      if (isSuperuser && !isSelf && (editing.userRole || "User") !== (original.userRole || "User")) {
+        updates.userRole = editing.userRole;
+      }
+      if (Object.keys(updates).length === 0) {
+        setEditing(null);
+        setSaving(false);
+        return;
+      }
+      await updateDoc(doc(db, "users", editing.id), updates);
+      logAdminAction("update", "user", editing.id);
+      toast.success("User updated");
+      setEditing(null);
+      load();
+    } catch (e) {
+      console.error("Error updating user:", e);
+      toast.error(e?.code === "permission-denied" ? "You don't have permission to make that change." : "Couldn't update the user.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleDeleteUser = async (userId, username) => {
-    if (
-      !window.confirm(
-        `Delete the profile of "${username}"? This removes them from the directory but does not delete their sign-in account (do that in the Firebase console).`
-      )
-    ) {
-      return;
-    }
-
+  const remove = async () => {
+    const user = confirmDelete;
     try {
-      setLoading(true);
-      await deleteDoc(doc(db, "users", userId));
-      toast.success("User deleted successfully!");
-      fetchUsers();
-    } catch (error) {
-      console.error("Error deleting user:", error);
-      toast.error("Failed to delete user");
+      await deleteDoc(doc(db, "users", user.id));
+      logAdminAction("delete", "user", user.id);
+      toast.success("Profile deleted");
+      setUsers((list) => list.filter((u) => u.id !== user.id));
+    } catch (e) {
+      toast.error("Couldn't delete the profile.");
     } finally {
-      setLoading(false);
+      setConfirmDelete(null);
     }
   };
 
-  const getRoleColor = (role) => {
-    switch (role) {
-      case "Superuser":
-        return "error";
-      case "Admin":
-        return "warning";
-      default:
-        return "default";
-    }
-  };
+  const canDelete = (u) => u.id !== currentUser?.uid && (isSuperuser || !isAdminRole(u.userRole));
 
   const columns = [
     {
       field: "username",
-      headerName: "Username",
-      width: 180,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Avatar src={params.row.photoURL} sx={{ width: 32, height: 32 }}>
-            {params.value?.charAt(0)?.toUpperCase()}
-          </Avatar>
-          <Typography variant="body2" fontWeight="bold">
-            {params.value}
-          </Typography>
-        </Box>
+      headerName: "Member",
+      flex: 1.3,
+      minWidth: 220,
+      renderCell: (p) => (
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
+          <UserAvatar user={p.row} size={34} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+              {p.value || "—"}
+              {p.row.id === currentUser?.uid ? " (you)" : ""}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" noWrap component="div">
+              {p.row.email}
+            </Typography>
+          </Box>
+        </Stack>
       ),
     },
-    {
-      field: "email",
-      headerName: "Email",
-      width: 220,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <EmailIcon sx={{ fontSize: 18, color: "#1976d2" }} />
-          <Typography variant="body2">{params.value}</Typography>
-        </Box>
-      ),
-    },
-    {
-      field: "batchyear",
-      headerName: "Batch Year",
-      width: 100,
-      align: "center",
-    },
+    { field: "batch", headerName: "Batch", width: 90, valueGetter: (_, row) => getBatchYear(row) || "" },
     {
       field: "userRole",
       headerName: "Role",
-      width: 130,
-      renderCell: (params) => (
-        <Chip
-          label={params.value || "User"}
-          color={getRoleColor(params.value)}
-          size="small"
-          icon={params.value === "Admin" || params.value === "Superuser" ? <AdminIcon /> : <PersonIcon />}
-        />
-      ),
+      width: 120,
+      valueGetter: (value) => value || "User",
+      renderCell: (p) => <Chip size="small" label={p.value} color={roleColor[p.value] || "default"} />,
     },
     {
       field: "is_member",
       headerName: "Member",
-      width: 100,
-      align: "center",
-      renderCell: (params) => (
-        params.value ? (
-          <CheckCircleIcon sx={{ color: "success.main" }} />
-        ) : (
-          <CancelIcon sx={{ color: "error.main" }} />
-        )
-      ),
+      width: 95,
+      type: "boolean",
+      renderCell: (p) => (p.value ? <CheckCircleRoundedIcon color="secondary" fontSize="small" /> : <RemoveCircleOutlineRoundedIcon sx={{ color: "text.disabled" }} fontSize="small" />),
     },
     {
       field: "emailVerified",
       headerName: "Verified",
-      width: 100,
-      align: "center",
-      renderCell: (params) => (
-        params.value ? (
-          <CheckCircleIcon sx={{ color: "success.main" }} />
-        ) : (
-          <CancelIcon sx={{ color: "error.main" }} />
-        )
-      ),
+      width: 95,
+      type: "boolean",
+      renderCell: (p) => (p.value ? <CheckCircleRoundedIcon color="success" fontSize="small" /> : <RemoveCircleOutlineRoundedIcon sx={{ color: "text.disabled" }} fontSize="small" />),
     },
     {
       field: "createdAt",
       headerName: "Joined",
       width: 120,
-      renderCell: (params) => {
-        if (!params.value) return "N/A";
-        const date = params.value?.toDate ? params.value.toDate() : new Date(params.value);
-        return date.toLocaleDateString();
-      },
+      valueGetter: (value) => toDate(value)?.getTime() || 0,
+      valueFormatter: (value) => (value ? formatDate(value) : "—"),
     },
     {
       field: "actions",
-      headerName: "Actions",
-      width: 120,
-      renderCell: (params) => (
+      headerName: "",
+      width: 130,
+      sortable: false,
+      align: "right",
+      renderCell: (p) => (
         <Box>
-          <Tooltip title="Edit User">
-            <IconButton size="small" onClick={() => handleOpenDialog(params.row)}>
-              <EditIcon />
+          <Tooltip title="View profile">
+            <IconButton size="small" aria-label="View profile" onClick={() => navigate(`/dashboard/userProfile/${p.row.id}`)}>
+              <VisibilityRoundedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete User">
-            <IconButton
-              size="small"
-              onClick={() => handleDeleteUser(params.row.id, params.row.username)}
-              disabled={params.row.userRole === "Superuser" || params.row.id === currentUser?.uid}
-            >
-              <DeleteIcon />
+          <Tooltip title="Edit role & membership">
+            <IconButton size="small" aria-label={`Edit ${p.row.username || "user"}`} onClick={() => setEditing({ ...p.row, userRole: p.row.userRole || "User" })}>
+              <EditRoundedIcon fontSize="small" />
             </IconButton>
+          </Tooltip>
+          <Tooltip title={canDelete(p.row) ? "Delete profile" : "Can't delete this account"}>
+            <span>
+              <IconButton size="small" color="error" aria-label={`Delete ${p.row.username || "user"}`} disabled={!canDelete(p.row)} onClick={() => setConfirmDelete(p.row)}>
+                <DeleteOutlineRoundedIcon fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
       ),
     },
   ];
 
-  if (loading && users.length === 0) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
     <Box>
-      {/* Statistics Cards */}
-      <Grid container spacing={2} mb={3}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(160deg, #17212E 0%, #0E1620 100%)" }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="white" fontWeight="bold">
-                    {stats.total}
-                  </Typography>
-                  <Typography variant="body2" color="white">
-                    Total Users
-                  </Typography>
-                </Box>
-                <GroupIcon sx={{ fontSize: 48, color: "rgba(255,255,255,0.3)" }} />
-              </Box>
-            </CardContent>
-          </Card>
+      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={2} sx={{ mb: 2.5 }}>
+        <Box>
+          <Typography variant="h5">Users</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Grant membership{isSuperuser ? ", change roles" : ""} and manage member profiles.
+          </Typography>
+        </Box>
+        <Button variant="outlined" startIcon={<DownloadRoundedIcon />} onClick={() => exportCsv(filtered)} disabled={!filtered.length}>
+          Export CSV
+        </Button>
+      </Stack>
+
+      <Grid container spacing={2} sx={{ mb: 2.5 }}>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="All users" value={stats.total} icon={GroupsRoundedIcon} onClick={() => { setRoleFilter("all"); setMemberFilter("all"); }} />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(135deg, #E8851F 0%, #D9611A 100%)" }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="white" fontWeight="bold">
-                    {stats.members}
-                  </Typography>
-                  <Typography variant="body2" color="white">
-                    Members
-                  </Typography>
-                </Box>
-                <CheckCircleIcon sx={{ fontSize: 48, color: "rgba(255,255,255,0.3)" }} />
-              </Box>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="Lifetime members" value={stats.members} icon={WorkspacePremiumRoundedIcon} color="secondary.main" active={memberFilter === "members"} onClick={() => setMemberFilter(memberFilter === "members" ? "all" : "members")} />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(135deg, #2BA6DE 0%, #1F7FB0 100%)" }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="white" fontWeight="bold">
-                    {stats.admins}
-                  </Typography>
-                  <Typography variant="body2" color="white">
-                    Admins
-                  </Typography>
-                </Box>
-                <AdminIcon sx={{ fontSize: 48, color: "rgba(255,255,255,0.3)" }} />
-              </Box>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="Admins & superusers" value={stats.admins} icon={AdminPanelSettingsRoundedIcon} color="warning.main" />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ background: "linear-gradient(135deg, #1F5B3F 0%, #143D2A 100%)" }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography variant="h4" color="white" fontWeight="bold">
-                    {stats.verified}
-                  </Typography>
-                  <Typography variant="body2" color="white">
-                    Verified
-                  </Typography>
-                </Box>
-                <CheckCircleIcon sx={{ fontSize: 48, color: "rgba(255,255,255,0.3)" }} />
-              </Box>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} md={3}>
+          <AdminStat label="Verified emails" value={stats.verified} icon={MarkEmailReadRoundedIcon} color="info.main" />
         </Grid>
       </Grid>
 
-      {/* Filters */}
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              placeholder="Search by username, email, or batch year..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <FormControl fullWidth>
-              <InputLabel>Role Filter</InputLabel>
-              <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} label="Role Filter">
-                <MenuItem value="all">All Roles</MenuItem>
-                <MenuItem value="User">User</MenuItem>
-                <MenuItem value="Admin">Admin</MenuItem>
-                <MenuItem value="Superuser">Superuser</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <FormControl fullWidth>
-              <InputLabel>Membership</InputLabel>
-              <Select value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)} label="Membership">
-                <MenuItem value="all">All Users</MenuItem>
-                <MenuItem value="members">Members Only</MenuItem>
-                <MenuItem value="non-members">Non-Members</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Data Grid */}
-      <Paper sx={{ height: 600, width: "100%" }}>
-        <DataGrid
-          rows={filteredUsers}
-          columns={columns}
-          pageSize={10}
-          rowsPerPageOptions={[10, 25, 50]}
-          disableSelectionOnClick
-          loading={loading}
-          sx={{
-            "& .MuiDataGrid-cell:focus": {
-              outline: "none",
-            },
-          }}
+      <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          placeholder="Search name, email, batch, company…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ flexGrow: 1 }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon fontSize="small" /></InputAdornment> }}
         />
-      </Paper>
+        <TextField select size="small" label="Role" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} sx={{ minWidth: 160 }}>
+          <MenuItem value="all">All roles</MenuItem>
+          {ROLES.map((r) => (
+            <MenuItem key={r} value={r}>{r}</MenuItem>
+          ))}
+        </TextField>
+        <TextField select size="small" label="Membership" value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)} sx={{ minWidth: 170 }}>
+          <MenuItem value="all">Everyone</MenuItem>
+          <MenuItem value="members">Members only</MenuItem>
+          <MenuItem value="non-members">Non-members</MenuItem>
+        </TextField>
+      </Stack>
 
-      {/* Edit User Dialog */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit User</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2, display: "flex", flexDirection: "column", gap: 2 }}>
-            <TextField
-              label="Username"
-              value={editingUser?.username || ""}
-              disabled
-              fullWidth
-            />
-            <TextField
-              label="Email"
-              value={editingUser?.email || ""}
-              disabled
-              fullWidth
-            />
-            <FormControl fullWidth disabled={!isSuperuser}>
-              <InputLabel>Role</InputLabel>
-              <Select
-                value={editingUser?.userRole || "User"}
-                onChange={(e) =>
-                  setEditingUser({ ...editingUser, userRole: e.target.value })
-                }
+      <DataGrid
+        autoHeight
+        rows={filtered}
+        columns={columns}
+        loading={loading}
+        rowHeight={60}
+        pageSizeOptions={[10, 25, 50, 100]}
+        initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+        disableRowSelectionOnClick
+        localeText={{ noRowsLabel: "No users match these filters" }}
+        sx={{ "& .MuiDataGrid-cell": { display: "flex", alignItems: "center" } }}
+      />
+
+      <Dialog open={!!editing} onClose={() => !saving && setEditing(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Edit user</DialogTitle>
+        <DialogContent dividers>
+          {editing && (
+            <Stack spacing={2.5}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <UserAvatar user={editing} size={44} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 700 }}>{editing.username || "—"}</Typography>
+                  <Typography variant="body2" color="text.secondary" noWrap>{editing.email}</Typography>
+                </Box>
+              </Stack>
+              <TextField
+                select
                 label="Role"
+                value={editing.userRole}
+                onChange={(e) => setEditing({ ...editing, userRole: e.target.value })}
+                disabled={!isSuperuser || isSelf}
+                helperText={!isSuperuser ? "Only a Superuser can change roles." : isSelf ? "You can't change your own role." : "Admins can manage content; Superusers can also change roles."}
               >
-                <MenuItem value="User">User</MenuItem>
-                <MenuItem value="Admin">Admin</MenuItem>
-                <MenuItem value="Superuser">Superuser</MenuItem>
-              </Select>
-              {!isSuperuser && <FormHelperText>Only a Superuser can change roles.</FormHelperText>}
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>Membership Status</InputLabel>
-              <Select
-                value={editingUser?.is_member ? "member" : "non-member"}
-                onChange={(e) =>
-                  setEditingUser({
-                    ...editingUser,
-                    is_member: e.target.value === "member",
-                  })
-                }
-                label="Membership Status"
-              >
-                <MenuItem value="member">Member</MenuItem>
-                <MenuItem value="non-member">Non-Member</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
+                {ROLES.map((r) => (
+                  <MenuItem key={r} value={r}>{r}</MenuItem>
+                ))}
+              </TextField>
+              <FormControlLabel
+                control={<Switch checked={!!editing.is_member} onChange={(e) => setEditing({ ...editing, is_member: e.target.checked })} />}
+                label={editing.is_member ? "Lifetime member" : "Not a member"}
+              />
+              {original?.is_member && !editing.is_member && (
+                <Typography variant="caption" color="warning.main">
+                  This removes the member badge. Fees are not refunded through this screen.
+                </Typography>
+              )}
+            </Stack>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleUpdateUser} variant="contained" disabled={loading}>
-            {loading ? <CircularProgress size={24} /> : "Update"}
-          </Button>
+          <Button color="inherit" onClick={() => setEditing(null)} disabled={saving}>Cancel</Button>
+          <Button variant="contained" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete this profile?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmDelete?.username || confirmDelete?.email}'s profile will be removed from the directory. Their sign-in account itself
+            can only be removed from the Firebase console (Authentication).
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={remove}>Delete profile</Button>
         </DialogActions>
       </Dialog>
     </Box>

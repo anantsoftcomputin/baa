@@ -142,6 +142,10 @@ test("paid events cannot be self-confirmed, only left pending", async () => {
   await assertSucceeds(deleteDoc(doc(db, "eventRegistrations/paid_bob")));
 });
 
+test("members can check for their own registration before it exists", async () => {
+  await assertSucceeds(getDoc(doc(verified("bob"), "eventRegistrations/free_bob")));
+});
+
 test("users cannot read other people's registrations", async () => {
   await seed((db) => setDoc(doc(db, "eventRegistrations/free_alice"), { eventId: "free", userId: "alice" }));
   await assertFails(getDoc(doc(verified("bob"), "eventRegistrations/free_alice")));

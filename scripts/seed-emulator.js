@@ -7,7 +7,7 @@
  *   npm run start:emulators    # terminal 3 → http://localhost:3000
  *
  * Demo logins (password for all: Password123!):
- *   admin@baa.test (Superuser) · asha@baa.test (member) · rohan@baa.test (user)
+ *   admin@baa.test (Superuser) · office@baa.test (Admin) · asha@baa.test (member) · rohan@baa.test (user)
  */
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8485";
 process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9411";
@@ -34,6 +34,7 @@ const USERS = [
   { uid: "asha", email: "asha@baa.test", username: "Asha Patel", userRole: "User", is_member: true, batchyear: 2008, job_title: "Product Manager", company: "Fintech Co.", city: "Bengaluru", country: "India", bio: "Building payments products. Happy to mentor students interested in tech.", is_mentor: true, mentorship_areas: "Product management, Careers in tech", skills: "Product, Strategy, SQL", show_email: true },
   { uid: "rohan", email: "rohan@baa.test", username: "Rohan Mehta", userRole: "User", is_member: false, batchyear: 2008, job_title: "Doctor", company: "City Hospital", city: "Ahmedabad", country: "India" },
   { uid: "kavya", email: "kavya@baa.test", username: "Kavya Desai", userRole: "User", is_member: true, batchyear: 2012, job_title: "Data Scientist", company: "Analytics Lab", city: "Pune", country: "India" },
+  { uid: "office", email: "office@baa.test", username: "Priya Nair", userRole: "Admin", is_member: true, batchyear: 2001, job_title: "Secretary", company: "BAA", city: "Vadodara", country: "India" },
   { uid: "neel", email: "neel@baa.test", username: "Neel Joshi", userRole: "User", is_member: false, batchyear: 2015, job_title: "Founder", company: "GreenRoots", city: "London", country: "UK" },
 ];
 
@@ -129,6 +130,13 @@ const seed = async () => {
   }
   await db.collection("comments").add({ postId: "p0", userId: "kavya", username: "Kavya Desai", content: "I'll be there!", parentCommentId: null, createdAt: ago(2) });
   await db.doc("likes/p1_asha").set({ postId: "p1", userId: "asha", createdAt: ago(10) });
+
+  // Records in the shapes written by older versions of the site, to keep them editable.
+  await db.doc("gallery/legacy-photo").set({ title: "Old Annual Day", description: "From the old gallery", category: "Events", image: img("baa-legacy-gal", 900, 650), createdAt: ago(500) });
+  await db.doc("committee/legacy-member").set({ name: "Legacy Member", designation: "Advisor", email: "legacy@baa.test", image: img("baa-legacy-person", 600, 750) });
+  await db.doc("achievements/legacy-ach").set({ title: "Legacy Award", description: "Recorded by the old site", date: "March 2019", image: img("baa-legacy-ach") });
+  await db.doc("initiatives/legacy-init").set({ name: "Legacy Book Drive", purpose: "Collect books for the library.", status: "active", total_funds_required: "50000", createdAt: ago(600) });
+  await db.doc("testimonials/legacy-quote").set({ name: "Old Timer", testimonial: "Great school!", graduation_year: "1985", image: img("baa-legacy-quote", 300, 300) });
 
   await db.doc("contactSubmissions/c1").set({ name: "Parent", email: "parent@example.com", phone: "99999", group: "events", message: "Can parents attend the Career Day?", status: "new", createdAt: ago(5) });
   await db.doc("feedback/f1").set({ name: "Visitor", email: "v@example.com", feedback: "Love the new website!", status: "new", createdAt: ago(1) });

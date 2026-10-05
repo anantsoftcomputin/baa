@@ -205,6 +205,13 @@ const EventsManager = () => {
       toast.error("Name and start date are required.");
       return;
     }
+    const badDate = ["start_date", "end_date", "registration_deadline"].find(
+      (k) => formData[k] && !/^\d{4}-\d{2}-\d{2}$/.test(formData[k])
+    );
+    if (badDate) {
+      toast.error("Please enter valid dates (use the date picker).");
+      return;
+    }
     if (formData.end_date && formData.end_date < formData.start_date) {
       toast.error("End date can't be before the start date.");
       return;

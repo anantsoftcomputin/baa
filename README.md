@@ -24,7 +24,7 @@ npm run emulators:seed           # terminal 2: demo users, events, posts…
 npm run start:emulators          # terminal 3: http://localhost:3000
 ```
 
-Demo logins (password `Password123!`): `admin@baa.test` (Superuser), `asha@baa.test` (member), `rohan@baa.test` (non-member). The emulator UI is at http://127.0.0.1:4411.
+Demo logins (password `Password123!`): `admin@baa.test` (Superuser), `office@baa.test` (Admin), `asha@baa.test` (member), `rohan@baa.test` (non-member). The emulator UI is at http://127.0.0.1:4411.
 
 ### Scripts
 
