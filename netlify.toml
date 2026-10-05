@@ -1,0 +1,36 @@
+# Netlify configuration for the BAA Alumni Portal (Create React App SPA)
+
+[build]
+  command = "npm run build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # CRA treats lint warnings as errors when CI=true; don't fail deploys on warnings.
+  CI = "false"
+
+# Single-page app: let React Router handle every path (deep links, refreshes).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Hashed build assets never change, so cache them for a year.
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Always fetch the latest index.html so new deploys show up immediately.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Needed for Google sign-in popups.
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"

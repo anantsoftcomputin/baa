@@ -202,7 +202,7 @@ const HeroBanner = ({ stats = [] }) => {
         <Stack
           direction="row"
           spacing={1}
-          sx={{ position: "absolute", zIndex: 2, right: { xs: 88, md: 120 }, bottom: { xs: 38, md: 50 } }}
+          sx={{ position: "absolute", zIndex: 2, right: 120, bottom: 50, display: { xs: "none", md: "flex" } }}
         >
           {slides.map((_, i) => (
             <Box

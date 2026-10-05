@@ -10,6 +10,7 @@ import { ProtectedRoute, AdminRoute, PublicRoute } from "./components/ProtectedR
 import { FullPageLoader } from "./components/common/Loader";
 import Navbar from "./components/LandingPage/Component/Navbar/Navbar";
 import Footers from "./components/LandingPage/Component/Footer/Footers";
+import BottomNav from "./components/LandingPage/Component/Navbar/BottomNav";
 import LandingPage from "./components/LandingPage/LandingPage";
 import NotFound from "./components/common/NotFound";
 
@@ -66,6 +67,7 @@ const PublicLayout = () => {
         </Suspense>
       </main>
       {!AUTH_PATHS.includes(location.pathname) && <Footers />}
+      <BottomNav />
     </>
   );
 };

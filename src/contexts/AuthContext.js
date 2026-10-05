@@ -29,7 +29,10 @@ export const AuthProvider = ({ children }) => {
       async (user) => {
         try {
           if (user && isVerified(user)) {
-            setCurrentUser(user);
+            // Keep showing the loader until the profile has arrived, then publish the
+            // user and profile together. Otherwise the dashboard first renders a
+            // profile-less version (non-member, no name) and visibly flips a moment later.
+            setLoading(true);
             let profile = await getUserProfile(user.uid);
             // A first-time Google sign-in creates the profile in parallel with this
             // listener, so give it a moment to appear before giving up.
@@ -37,6 +40,7 @@ export const AuthProvider = ({ children }) => {
               await new Promise((r) => setTimeout(r, 700));
               profile = await getUserProfile(user.uid);
             }
+            setCurrentUser(user);
             setUserProfile(profile);
 
             // Keep the stored flag in sync once the user has clicked the verification link.
@@ -51,6 +55,8 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
           console.error("Error in auth state change:", err);
           setError(err.message);
+          // Still let a verified user in if only the profile read failed.
+          if (user && isVerified(user)) setCurrentUser(user);
         } finally {
           setLoading(false);
         }

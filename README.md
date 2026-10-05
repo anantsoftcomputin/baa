@@ -103,15 +103,25 @@ The membership fee and benefits can be edited in **Admin panel → Website conte
 
 ## Deploying
 
+### Website on Netlify
+
+`netlify.toml` already has the build command, the publish folder, the SPA redirect that keeps deep links working, and caching headers.
+
+1. Netlify → **Add new site → Import an existing project** → pick the GitHub repo. The build settings are read from `netlify.toml`.
+2. Environment variables are optional: the app falls back to the production Firebase config. To set them explicitly, copy the `REACT_APP_*` values from `.env.example` into Site settings → Environment variables.
+3. **Required:** Firebase console → Authentication → Settings → **Authorized domains** → add your Netlify domain (e.g. `your-site.netlify.app` and any custom domain). Without this, Google sign-in and email links fail on the new domain.
+
+### Firebase (rules, indexes, functions)
+
 ```bash
 firebase login
 npm run deploy:rules                         # security rules first
 firebase deploy --only firestore:indexes
-npm run deploy:hosting
 firebase deploy --only functions             # when ready to take payments
+npm run deploy:hosting                       # only if you host on Firebase instead of Netlify
 ```
 
-Hosting serves `build/` with an SPA rewrite. Deep links such as `/events/<id>` work because assets are served from the site root (`"homepage": "/"`).
+Both Netlify and Firebase Hosting serve `build/` with an SPA rewrite. Deep links such as `/events/<id>` work because assets are served from the site root (`"homepage": "/"`).
 
 ---
 

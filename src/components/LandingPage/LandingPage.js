@@ -129,7 +129,7 @@ const LandingPage = () => {
           color="secondary"
           aria-label="Share feedback"
           onClick={() => setFeedbackOpen(true)}
-          sx={{ position: "fixed", right: { xs: 16, md: 28 }, bottom: { xs: 16, md: 28 }, zIndex: 1200 }}
+          sx={{ position: "fixed", right: { xs: 16, md: 28 }, bottom: { xs: "calc(80px + env(safe-area-inset-bottom))", md: 28 }, zIndex: 1200 }}
         >
           <RateReviewRoundedIcon />
         </Fab>
