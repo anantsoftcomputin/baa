@@ -75,7 +75,7 @@ const WebsiteContentManager = () => {
 
   const about = useSection("aboutUs", { mission: "", vision: "", history: "" });
   const hero = useSection("heroImages", { images: [] });
-  const contact = useSection("contact", { address: "", email: "", phone: "" });
+  const contact = useSection("contact", { address: "", email: "", phone: "", grievance_officer: "" });
   const footer = useSection("footer", { about_text: "", copyright_text: "", facebook_link: "", instagram_link: "", linkedin_link: "", youtube_link: "" });
   const membership = useSection("membership", { amount: String(DEFAULT_MEMBERSHIP_FEE), benefitsText: DEFAULT_BENEFITS.join("\n") });
 
@@ -226,7 +226,10 @@ const WebsiteContentManager = () => {
         </Stack>
       </Panel>
 
-      <Panel title="Contact details" description="Shown on the Contact page and in the footer.">
+      <Panel
+        title="Contact details"
+        description="Shown on the Contact page, in the footer and in the Privacy Policy, Terms and Refund Policy. Payment gateways require a working email and phone."
+      >
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6}>
             {contact.field("email", "Email", { type: "email" })}
@@ -235,7 +238,16 @@ const WebsiteContentManager = () => {
             {contact.field("phone", "Phone")}
           </Grid>
           <Grid item xs={12}>
-            {contact.field("address", "Address", { multiline: true, minRows: 2 })}
+            {contact.field("address", "Address", {
+              multiline: true,
+              minRows: 2,
+              helperText: "Leave empty to use the registered address from the GST certificate.",
+            })}
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            {contact.field("grievance_officer", "Grievance Officer (name)", {
+              helperText: "Named in the Privacy Policy and Terms, as required by Indian IT and data-protection rules.",
+            })}
           </Grid>
           <Grid item xs={12}>
             <Button variant="contained" disabled={contact.saving} onClick={() => contact.save(strip(contact.value), "Contact details updated")}>

@@ -23,6 +23,7 @@ import { getInitiativeById, getMyContributions } from "../../../../firebase/fire
 import { paymentErrorMessage, startPayment } from "../../../../firebase/payments";
 import ImageBox from "../../../common/ImageBox";
 import EmptyState from "../../../common/EmptyState";
+import PaymentTermsNote from "../../../common/PaymentTermsNote";
 import { fundingProgress } from "../../../common/InitiativeCard";
 import { formatCurrency, formatDate, formatDateRange, imageOf } from "../../../../utils/format";
 
@@ -202,6 +203,7 @@ const InitiativeData = () => {
                   <LockRoundedIcon sx={{ fontSize: 14 }} />
                   <Typography variant="caption">Secure payment via Razorpay</Typography>
                 </Stack>
+                <PaymentTermsNote />
               </>
             )}
 

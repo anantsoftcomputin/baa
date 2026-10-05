@@ -12,6 +12,7 @@ import { paymentErrorMessage, startPayment } from "../../../../firebase/payments
 import { logMembershipPurchaseCompleted, logMembershipPurchaseInitiated } from "../../../../firebase/analytics";
 import { DEFAULT_BENEFITS } from "../../../LandingPage/Component/Content/MembershipCta";
 import DashboardHeader from "../../../common/DashboardHeader";
+import PaymentTermsNote from "../../../common/PaymentTermsNote";
 import { formatCurrency, formatDate } from "../../../../utils/format";
 
 /** Shared purchase hook so the side card and the full page behave identically. */
@@ -86,6 +87,7 @@ export const MembershipCard = () => {
         </Button>
         <Button onClick={() => navigate("/dashboard/membership")}>Learn more</Button>
       </Stack>
+      <PaymentTermsNote sx={{ textAlign: "left" }} />
     </Card>
   );
 };
@@ -162,6 +164,7 @@ const Membership = () => {
                   <LockRoundedIcon sx={{ fontSize: 14 }} />
                   <Typography variant="caption">Secure payment via Razorpay</Typography>
                 </Stack>
+                <PaymentTermsNote light />
               </>
             )}
           </Card>

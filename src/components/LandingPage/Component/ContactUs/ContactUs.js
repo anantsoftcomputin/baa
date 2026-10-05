@@ -9,11 +9,13 @@ import { getWebsiteContent, submitContactForm } from "../../../../firebase/fires
 import PageHeader from "../../../common/PageHeader";
 import SectionHeader from "../../../common/SectionHeader";
 import Reveal from "../../../common/Reveal";
+import { REGISTERED_ADDRESS } from "../Legal/organisation";
 
+/** Shown until the admin saves contact details. No placeholder email/phone is ever shown. */
 export const CONTACT_FALLBACK = {
-  email: "contact@baa.com",
-  phone: "+91 1234567890",
-  address: "Bhavan's School, Vadodara, Gujarat, India",
+  email: "",
+  phone: "",
+  address: REGISTERED_ADDRESS,
 };
 
 const MAP_SRC =
@@ -140,8 +142,10 @@ const ContactUs = ({ page = false }) => {
         <Reveal delay={120}>
           <Stack spacing={3}>
             <Stack spacing={2.5} sx={{ p: { xs: 3, md: 4 }, borderRadius: 4, bgcolor: "#fff", border: "1px solid", borderColor: "divider" }}>
-              <InfoRow icon={MailOutlineRoundedIcon} label="Email" value={contact.email} href={`mailto:${contact.email}`} />
-              <InfoRow icon={PhoneRoundedIcon} label="Phone" value={contact.phone} href={`tel:${String(contact.phone).replace(/\s/g, "")}`} />
+              {contact.email && <InfoRow icon={MailOutlineRoundedIcon} label="Email" value={contact.email} href={`mailto:${contact.email}`} />}
+              {contact.phone && (
+                <InfoRow icon={PhoneRoundedIcon} label="Phone" value={contact.phone} href={`tel:${String(contact.phone).replace(/\s/g, "")}`} />
+              )}
               <InfoRow icon={PlaceRoundedIcon} label="Address" value={contact.address} />
             </Stack>
             <Box

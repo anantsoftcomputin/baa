@@ -23,8 +23,9 @@ const ContactPage = lazy(() =>
 const Blogs = lazy(() => import("./components/LandingPage/Component/Blogs/Blog"));
 const BlogDetails = lazy(() => import("./components/LandingPage/Component/Blogs/BlogDetails"));
 const Gallery = lazy(() => import("./components/LandingPage/Component/Gallery/Gallery"));
-const Terms = lazy(() => import("./components/LandingPage/Component/TermsAndConditons/Terms"));
-const Privacy = lazy(() => import("./components/LandingPage/Component/TermsAndConditons/Privacy"));
+const PrivacyPolicy = lazy(() => import("./components/LandingPage/Component/Legal/PrivacyPolicy"));
+const TermsAndConditions = lazy(() => import("./components/LandingPage/Component/Legal/TermsAndConditions"));
+const RefundPolicy = lazy(() => import("./components/LandingPage/Component/Legal/RefundPolicy"));
 const Login = lazy(() => import("./components/Auth/Login"));
 const Register = lazy(() => import("./components/Auth/Register"));
 const ForgotPassword = lazy(() => import("./components/Auth/ForgotPassword"));
@@ -98,8 +99,14 @@ function App() {
               <Route path="/Blogs" element={<Blogs />} />
               <Route path="/Blogs/:BlogId" element={<BlogDetails />} />
               <Route path="/Gallery" element={<Gallery />} />
-              <Route path="/Terms" element={<Terms />} />
-              <Route path="/Privacy" element={<Privacy />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+              <Route path="/refund-policy" element={<RefundPolicy />} />
+              {/* Aliases, including the old /Terms and /Privacy links */}
+              <Route path="/Privacy" element={<Navigate to="/privacy-policy" replace />} />
+              <Route path="/Terms" element={<Navigate to="/terms-and-conditions" replace />} />
+              <Route path="/user-agreement" element={<Navigate to="/terms-and-conditions" replace />} />
+              <Route path="/cancellation-and-refund-policy" element={<Navigate to="/refund-policy" replace />} />
               <Route path="*" element={<NotFound />} />
             </Route>
 

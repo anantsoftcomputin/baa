@@ -13,6 +13,7 @@ import LogoImg from "../../../images/BAA.png";
 import { CONTACT_FALLBACK } from "../ContactUs/ContactUs";
 import { scrollToSection } from "../Navbar/Navbar";
 import { externalUrl } from "../../../../utils/format";
+import { LEGAL_PAGES, ORGANISATION } from "../Legal/organisation";
 
 const FooterLink = ({ to, section, children }) => {
   const navigate = useNavigate();
@@ -115,39 +116,52 @@ const Footers = () => {
             <Stack spacing={1.25}>
               <FooterLink to="/login">Sign in</FooterLink>
               <FooterLink to="/register">Join BAA</FooterLink>
+              <FooterLink to="/dashboard/membership">Membership</FooterLink>
               <FooterLink to="/contact">Contact</FooterLink>
-              <FooterLink to="/Terms">Terms</FooterLink>
-              <FooterLink to="/Privacy">Privacy</FooterLink>
             </Stack>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} sm={6} md={2}>
+            <ColumnTitle>Legal</ColumnTitle>
+            <Stack spacing={1.25}>
+              {LEGAL_PAGES.map((p) => (
+                <FooterLink key={p.path} to={p.path}>
+                  {p.label}
+                </FooterLink>
+              ))}
+            </Stack>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
             <ColumnTitle>Reach us</ColumnTitle>
             <Stack spacing={1.75}>
               <Stack direction="row" spacing={1.5}>
                 <PlaceRoundedIcon fontSize="small" sx={{ color: "primary.light", mt: 0.25 }} />
                 <Typography sx={{ fontSize: "0.95rem", whiteSpace: "pre-line" }}>{contact.address}</Typography>
               </Stack>
-              <Stack direction="row" spacing={1.5}>
-                <MailOutlineRoundedIcon fontSize="small" sx={{ color: "primary.light", mt: 0.25 }} />
-                <Link href={`mailto:${contact.email}`} underline="hover" sx={{ color: "inherit", fontSize: "0.95rem" }}>
-                  {contact.email}
-                </Link>
-              </Stack>
-              <Stack direction="row" spacing={1.5}>
-                <PhoneRoundedIcon fontSize="small" sx={{ color: "primary.light", mt: 0.25 }} />
-                <Link href={`tel:${String(contact.phone).replace(/\s/g, "")}`} underline="hover" sx={{ color: "inherit", fontSize: "0.95rem" }}>
-                  {contact.phone}
-                </Link>
-              </Stack>
+              {contact.email && (
+                <Stack direction="row" spacing={1.5}>
+                  <MailOutlineRoundedIcon fontSize="small" sx={{ color: "primary.light", mt: 0.25 }} />
+                  <Link href={`mailto:${contact.email}`} underline="hover" sx={{ color: "inherit", fontSize: "0.95rem", wordBreak: "break-all" }}>
+                    {contact.email}
+                  </Link>
+                </Stack>
+              )}
+              {contact.phone && (
+                <Stack direction="row" spacing={1.5}>
+                  <PhoneRoundedIcon fontSize="small" sx={{ color: "primary.light", mt: 0.25 }} />
+                  <Link href={`tel:${String(contact.phone).replace(/\s/g, "")}`} underline="hover" sx={{ color: "inherit", fontSize: "0.95rem" }}>
+                    {contact.phone}
+                  </Link>
+                </Stack>
+              )}
             </Stack>
           </Grid>
         </Grid>
         <Divider sx={{ borderColor: "rgba(255,255,255,0.1)", my: 5 }} />
         <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1} sx={{ fontSize: "0.85rem" }}>
           <Typography sx={{ fontSize: "inherit" }}>
-            © {new Date().getFullYear()} {footer.copyright_text || "Bhavan's Alumni Association, Vadodara. All rights reserved."}
+            © {new Date().getFullYear()} {footer.copyright_text || `${ORGANISATION.legalName}. All rights reserved.`}
           </Typography>
-          <Typography sx={{ fontSize: "inherit", color: "rgba(255,255,255,0.5)" }}>Made with care by Bhavanites.</Typography>
+          <Typography sx={{ fontSize: "inherit", color: "rgba(255,255,255,0.55)" }}>GSTIN: {ORGANISATION.gstin}</Typography>
         </Stack>
       </Container>
     </Box>

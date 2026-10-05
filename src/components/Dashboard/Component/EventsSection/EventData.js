@@ -34,6 +34,7 @@ import { logEventRegistered } from "../../../../firebase/analytics";
 import EventDetails from "../../../common/EventDetails";
 import EmptyState from "../../../common/EmptyState";
 import ShareMenu from "../../../common/ShareMenu";
+import PaymentTermsNote from "../../../common/PaymentTermsNote";
 import { formatCurrency, formatDateRange, isUpcoming, toDate } from "../../../../utils/format";
 import { eventPath } from "../../../LandingPage/Component/Content/Events";
 
@@ -106,6 +107,7 @@ const RegisterDialog = ({ open, onClose, event, onSubmit, busy }) => {
           <Typography variant="subtitle1">Total</Typography>
           <Typography variant="h5">{total > 0 ? formatCurrency(total) : "Free"}</Typography>
         </Stack>
+        {total > 0 && <PaymentTermsNote sx={{ textAlign: "left" }} />}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={busy} color="inherit">
@@ -264,6 +266,7 @@ const EventData = () => {
           <Button size="large" variant="contained" onClick={handleCompletePayment} disabled={busy}>
             {busy ? "Opening checkout…" : "Complete payment"}
           </Button>
+          <PaymentTermsNote sx={{ mt: 0 }} />
           <Button color="inherit" onClick={handleCancel} disabled={busy}>
             Cancel registration
           </Button>

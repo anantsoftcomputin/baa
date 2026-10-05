@@ -195,7 +195,11 @@ const Register = () => {
             <Typography variant="body2" sx={{ pt: 0.75 }}>
               I agree to the{" "}
               <Link component="button" type="button" onClick={() => setTermsOpen(true)} sx={{ fontWeight: 700, verticalAlign: "baseline" }}>
-                terms and conditions
+                Terms &amp; Conditions
+              </Link>{" "}
+              and{" "}
+              <Link component={RouterLink} to="/privacy-policy" target="_blank" sx={{ fontWeight: 700 }}>
+                Privacy Policy
               </Link>
             </Typography>
           }
@@ -229,6 +233,9 @@ const Register = () => {
           ))}
         </DialogContent>
         <DialogActions>
+          <Button component={RouterLink} to="/terms-and-conditions" target="_blank" sx={{ mr: "auto" }}>
+            Read full Terms
+          </Button>
           <Button onClick={() => setTermsOpen(false)}>Close</Button>
           <Button
             variant="contained"
