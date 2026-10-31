@@ -201,7 +201,7 @@ const InitiativeData = () => {
                 </Button>
                 <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="center" sx={{ mt: 1.25, color: "text.secondary" }}>
                   <LockRoundedIcon sx={{ fontSize: 14 }} />
-                  <Typography variant="caption">Secure payment via Razorpay</Typography>
+                  <Typography variant="caption">Secure payment via CCAvenue</Typography>
                 </Stack>
                 <PaymentTermsNote />
               </>

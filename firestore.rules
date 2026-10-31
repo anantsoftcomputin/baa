@@ -138,7 +138,7 @@ service cloud.firestore {
     }
 
     // Document id is `${eventId}_${userId}`.
-    // Paid registrations are confirmed only by the `verifyPayment` Cloud Function.
+    // Paid registrations are confirmed only by the payment Cloud Functions.
     match /eventRegistrations/{registrationId} {
       // `resource == null` lets members check whether they have registered yet
       // (reading a missing document reveals nothing).
@@ -168,7 +168,7 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Written only by the `verifyPayment` Cloud Function.
+    // Written only by the payment Cloud Functions.
     match /contributions/{contributionId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow write: if false;

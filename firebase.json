@@ -71,7 +71,9 @@
         ".git",
         "test",
         "firebase-debug.log",
-        "firebase-debug.*.log"
+        "firebase-debug.*.log",
+        ".secret.local",
+        ".env.example"
       ]
     }
   ],

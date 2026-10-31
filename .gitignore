@@ -15,6 +15,8 @@ coverage/
 !.env.example
 src/.env
 functions/.env*
+!functions/.env.example
+functions/.secret.local
 functions/.runtimeconfig.json
 *-service-account*.json
 serviceAccountKey*.json

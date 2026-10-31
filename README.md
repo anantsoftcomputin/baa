@@ -1,6 +1,6 @@
 # BAA Alumni Portal
 
-The website and member portal of **Bhavan's Alumni Association, Vadodara**: a public site (events, initiatives, committee, gallery, blogs, contact) and a signed-in dashboard (feed, batchmate directory, profiles, event registration, contributions, lifetime membership), with an admin CMS.
+The website and member portal of **Bhavan's Alumni Association, Vadodara**: a public site (events, initiatives, committee, gallery, blogs, contact) and a signed-in dashboard (feed, batchmate directory, profiles, event registration, contributions, Alumni Membership), with an admin CMS.
 
 Built with React 18, Material UI 5 and Firebase (Auth, Firestore, Storage, Cloud Functions, Hosting).
 
@@ -55,7 +55,7 @@ src/
     Auth/                sign in / register / reset password
     Dashboard/           member portal (feed, events, initiatives, profiles, membership)
     Admin/               admin panel (/dashboard/admin?tab=…)
-functions/               Cloud Functions: Razorpay orders + payment verification
+functions/               Cloud Functions: CCAvenue checkout + payment verification
 rules-tests/             security-rules test suite
 scripts/seed-emulator.js demo data for local development
 firestore.rules, storage.rules, firestore.indexes.json
@@ -78,26 +78,35 @@ Users can't change their own `userRole` or `is_member`. The security rules enfor
 
 ---
 
-## Payments (Razorpay)
+## Payments (CCAvenue live)
 
-All amounts are decided and verified on the server:
+Protocol reference: [CCAvenue integration guide](https://links.avenues.info/downloads/CCAvenue_Integration_Ver_3_3.pdf) and [merchant API guide](https://links.avenues.info/downloads/CCAvenues_API_Vers-1_3.pdf).
 
-1. The browser calls the `createPaymentOrder` Cloud Function. It works out the price (membership fee from `websiteContent/membership`, the event fee from the event, or the contribution amount the user entered) and opens a Razorpay order.
-2. Razorpay Checkout runs in the browser.
-3. `verifyPayment` checks Razorpay's signature. Then it marks the member as paid, confirms the event registration, or records the contribution and updates the initiative's `raised_amount`.
+Memberships, paid event registrations and initiative contributions use CCAvenue Billing Page (Non-Seamless): the browser posts the encrypted order to CCAvenue and the customer completes payment on its hosted page. This is the hosted billing flow described in the supplied integration instructions; `integration_type=iframe_normal` applies only to the alternative embedded iFrame flow. Required fields include a unique order ID (maximum 40 characters), INR amount with two decimal places, redirect/cancel URLs and `language=en`. Cloud Functions calculate prices, encrypt the request, receive the encrypted POST callback and independently check CCAvenue's Order Status API before granting benefits. Fulfilment runs in a Firestore transaction so repeated callbacks cannot duplicate contributions.
 
-Until the functions are deployed, the site shows "Online payments aren't switched on yet", and free event registration keeps working.
+Credentials are **backend only**. Root `.env` contains public React configuration; `functions/.env` contains `CCAVENUE_ENV`, `CCAVENUE_MERCHANT_ID`, `CCAVENUE_ACCESS_CODE` and `PAYMENT_SITE_URL`. The working key must be stored in Firebase Secret Manager for production. Never use a `REACT_APP_` prefix for gateway credentials.
 
-**To enable it** (Cloud Functions need the Firebase Blaze plan):
+Set `CCAVENUE_ENV=production` for live checkout (`secure.ccavenue.com`) and status requests (`api.ccavenue.com`). Set `CCAVENUE_ENV=test` for checkout on `test.ccavenue.com` and status requests on `apitest.ccavenue.com`. Use matching MARS credentials, including the working key, for the selected environment. The local configuration remains `production` as requested.
 
-```bash
-npm install --prefix functions
-echo "RAZORPAY_KEY_ID=rzp_live_xxxxx" > functions/.env
-firebase functions:secrets:set RAZORPAY_KEY_SECRET
-firebase deploy --only functions
-```
+Test checkouts record `test_paid` orders and `test_completed` payments, show an explicit test result, and never grant real membership, event registrations or contributions. Use an isolated Firebase project for staging. Each order records its environment; a pending order cannot be verified using credentials switched to another environment. Verify pending orders before switching credentials or switch back to their environment to reconcile them.
 
-The membership fee and benefits can be edited in **Admin panel → Website content → Membership**.
+To enable live payments (Firebase Blaze plan required):
+
+1. Review `functions/.env` against `functions/.env.example`. Use the credentials issued for the registered production domain.
+2. Run `firebase functions:secrets:set CCAVENUE_WORKING_KEY` and paste the working key from the CCAvenue merchant portal at the hidden prompt. The ignored `functions/.secret.local` holds the existing key for emulator use only; deployment does not import it.
+3. In CCAvenue MARS, confirm the registered website is `https://bhavansalumniassociation.org` and Order Status API access is enabled. If CCAvenue requires outbound IP allowlisting for this account, configure static egress for the functions and register that IP before taking payments.
+4. Run `npm run test:functions`, `npm run build`, then `firebase deploy --only functions:createPaymentOrder,functions:ccavenueResponse,functions:verifyPayment` and deploy the rebuilt frontend to its existing host. Deploy the backend and frontend together because the old Razorpay checkout is incompatible.
+5. The live redirect and cancel URL is `https://asia-south1-stationachyut.cloudfunctions.net/ccavenueResponse`. It must accept public POST requests. If MARS requires callback registration, register this exact URL. The callback sends customers to `/dashboard/payment-result` on `PAYMENT_SITE_URL`.
+
+6. Complete a controlled live payment and confirm its order, payment record and entitlement in Firestore. Check cancelled payments too. Local tests do not prove merchant activation or live credentials.
+
+**Latest retry (25 October 2026):** Firebase access was restored and all three payment functions (`createPaymentOrder`, `ccavenueResponse`, `verifyPayment`) were successfully created in `asia-south1` on project `stationachyut`. The working key is stored as version 1 of `CCAVENUE_WORKING_KEY` in Secret Manager with access granted to the functions runtime. Public endpoint checks reached the handlers: both callable functions reject unsigned requests with HTTP 401, and the callback rejects GET with HTTP 405. All 18 backend payment tests and 4 frontend payment tests passed, and the production build succeeded. The rebuilt CCAvenue frontend was subsequently deployed to the existing Netlify site `baa-baroda` at `https://bhavansalumniassociation.org` (deploy `6add07687aa4d96c8bb49e08`). A read-only live Order Status API request returned `Access_code: Invalid Parameter` (HTTP 200, gateway status `1`); verify the environment, API credentials and API activation in MARS or with CCAvenue support before launch. Hosted checkout has not been validated by an end-to-end payment, and no payment was initiated by these checks.
+
+**Static payment egress (31 October 2026):** Project `stationachyut` now has the `baa-payments` custom VPC, the `baa-payments-egress` subnet (`10.80.0.0/28`) and `baa-payments` Serverless VPC Access connector in `asia-south1`. Router `baa-payments-router` and Cloud NAT gateway `baa-payments-nat` route that subnet through reserved regional address `baa-ccavenue-ip`: **`34.93.184.151`**. The shared payment function options specify this connector and `ALL_TRAFFIC`; retain these settings on future deployments. A temporary Cloud Run diagnostic job verified the outbound IP and made a read-only production Order Status request, which still returned gateway status `1`, `Access_code: Invalid Parameter`. The diagnostic job was deleted. CCAvenue must allowlist this IP and confirm Order Status API activation/credentials before pending orders can be verified. Netlify's inbound IP does not identify these outbound requests. The connector, NAT and external address incur ongoing Google Cloud charges; keep the reserved address while it is allowlisted.
+
+The return page only shows success after the backend confirms payment. If confirmation is delayed, use **Check again**, or open `/dashboard/payment-result` in the same browser to recover the last checkout. Do not pay again while a payment is pending. The account owner or an admin can also find the reference in `paymentOrders`.
+
+Membership pricing is managed in **Admin panel → Website content → Membership**. Free event registration continues without the gateway. Refunds are handled through CCAvenue's merchant dashboard; automated refunds are not implemented.
 
 ---
 

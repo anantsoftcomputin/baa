@@ -262,7 +262,7 @@ const UserManagement = () => {
           <AdminStat label="All users" value={stats.total} icon={GroupsRoundedIcon} onClick={() => { setRoleFilter("all"); setMemberFilter("all"); }} />
         </Grid>
         <Grid item xs={6} md={3}>
-          <AdminStat label="Lifetime members" value={stats.members} icon={WorkspacePremiumRoundedIcon} color="secondary.main" active={memberFilter === "members"} onClick={() => setMemberFilter(memberFilter === "members" ? "all" : "members")} />
+          <AdminStat label="Alumni Members" value={stats.members} icon={WorkspacePremiumRoundedIcon} color="secondary.main" active={memberFilter === "members"} onClick={() => setMemberFilter(memberFilter === "members" ? "all" : "members")} />
         </Grid>
         <Grid item xs={6} md={3}>
           <AdminStat label="Admins & superusers" value={stats.admins} icon={AdminPanelSettingsRoundedIcon} color="warning.main" />
@@ -333,7 +333,7 @@ const UserManagement = () => {
               </TextField>
               <FormControlLabel
                 control={<Switch checked={!!editing.is_member} onChange={(e) => setEditing({ ...editing, is_member: e.target.checked })} />}
-                label={editing.is_member ? "Lifetime member" : "Not a member"}
+                label={editing.is_member ? "Alumni Member" : "Not a member"}
               />
               {original?.is_member && !editing.is_member && (
                 <Typography variant="caption" color="warning.main">

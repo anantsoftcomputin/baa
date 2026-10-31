@@ -115,7 +115,7 @@ const Navbar = ({ handleDrawerToggle }) => {
               {currentUser?.email}
             </Typography>
             <Box sx={{ mt: 1, display: "flex", gap: 0.75 }}>
-              {isMember && <Chip size="small" color="secondary" label="Lifetime member" />}
+              {isMember && <Chip size="small" color="secondary" label="Alumni Member" />}
               {isAdmin && <Chip size="small" label={userRole} />}
             </Box>
           </Box>

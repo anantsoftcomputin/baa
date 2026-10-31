@@ -43,6 +43,7 @@ const CheckUser = lazy(() => import("./components/Dashboard/Component/UserProfil
 const ChangePassword = lazy(() => import("./components/Dashboard/Component/UserProfile/ChangePassword"));
 const Batchmate = lazy(() => import("./components/Dashboard/Component/BatchMate-section/Batchmate"));
 const PostsByFollowing = lazy(() => import("./components/Dashboard/Component/MainContent/PostsByFollowing"));
+const PaymentResult = lazy(() => import("./components/Dashboard/Component/PaymentResult"));
 const Membership = lazy(() => import("./components/Dashboard/Component/Membership/Membership"));
 const AdminPanel = lazy(() => import("./components/Admin/AdminPanel"));
 
@@ -129,6 +130,7 @@ function App() {
               <Route path="updateProfile" element={<UserProfile />} />
               <Route path="changePassword" element={<ChangePassword />} />
               <Route path="batchmates" element={<Batchmate />} />
+              <Route path="payment-result" element={<PaymentResult />} />
               <Route path="membership" element={<Membership />} />
               <Route path="admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
               <Route path="add-achievement" element={adminRedirect("achievements")} />

@@ -12,7 +12,7 @@ import { formatCurrency, formatDate } from "../../../utils/format";
 import AdminStat from "./AdminStat";
 
 /**
- * Lifetime membership settings (`websiteContent/membership`).
+ * Alumni Membership settings (`websiteContent/membership`).
  * The payment server reads the fee from here, so a change applies to the next purchase.
  */
 const MembershipSettings = () => {
@@ -82,17 +82,17 @@ const MembershipSettings = () => {
       <Box sx={{ mb: 2.5 }}>
         <Typography variant="h5">Membership</Typography>
         <Typography variant="body2" color="text.secondary">
-          Set the lifetime membership fee and the benefits listed on the website.
+          Set the Alumni Membership fee and the benefits listed on the website.
         </Typography>
       </Box>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6}>
-          <AdminStat label="Current lifetime membership fee" value={formatCurrency(saved.amount)} icon={WorkspacePremiumRoundedIcon} />
+          <AdminStat label="Current Alumni Membership fee" value={formatCurrency(saved.amount)} icon={WorkspacePremiumRoundedIcon} />
         </Grid>
         <Grid item xs={12} sm={6}>
           <AdminStat
-            label="Lifetime members"
+            label="Alumni Members"
             value={members ?? "–"}
             icon={GroupsRoundedIcon}
             color="secondary.main"
@@ -108,7 +108,7 @@ const MembershipSettings = () => {
               Membership fee
             </Typography>
             <TextField
-              label="Lifetime membership fee"
+              label="Alumni Membership fee"
               value={amount}
               onChange={(e) => {
                 setAmount(e.target.value.replace(/[^\d.]/g, ""));
@@ -116,7 +116,7 @@ const MembershipSettings = () => {
               }}
               error={!!error}
               helperText={error || "One-time amount in rupees. Applies to new purchases; existing members are not affected."}
-              inputProps={{ inputMode: "decimal", "aria-label": "Lifetime membership fee" }}
+              inputProps={{ inputMode: "decimal", "aria-label": "Alumni Membership fee" }}
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
               sx={{ maxWidth: 360 }}
               fullWidth

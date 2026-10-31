@@ -14,7 +14,7 @@ export const DEFAULT_BENEFITS = [
   "Mentor — or be mentored by — fellow Bhavanites",
 ];
 
-/** Lifetime membership call-to-action band on the home page. */
+/** Alumni Membership call-to-action band on the home page. */
 const MembershipCta = ({ fee, benefits }) => {
   const navigate = useNavigate();
   const { currentUser, isMember } = useAuth();
@@ -52,7 +52,7 @@ const MembershipCta = ({ fee, benefits }) => {
             <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center" sx={{ position: "relative", zIndex: 1 }}>
               <Grid item xs={12} md={6}>
                 <Typography variant="overline" component="p" sx={{ color: "primary.light", mb: 1.5 }}>
-                  Lifetime membership
+                  Alumni Membership
                 </Typography>
                 <Typography variant="h2" component="h2" sx={{ color: "#fff" }}>
                   Make it official. Stay a Bhavanite for life.
@@ -69,7 +69,7 @@ const MembershipCta = ({ fee, benefits }) => {
                   disabled={isMember}
                   sx={{ mt: 4, "&.Mui-disabled": { bgcolor: "rgba(255,255,255,0.2)", color: "#fff" } }}
                 >
-                  {isMember ? "You're a lifetime member" : currentUser ? "Become a member" : "Join & become a member"}
+                  {isMember ? "You're an alumni member" : currentUser ? "Become a member" : "Join & become a member"}
                 </Button>
               </Grid>
               <Grid item xs={12} md={6}>

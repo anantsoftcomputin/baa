@@ -164,7 +164,7 @@ const EventData = () => {
     });
     if (result.status === "paid") {
       toast.success("Payment received — you're registered!");
-    } else {
+    } else if (result.status !== "redirecting") {
       toast.info("Payment not completed. You can finish it any time from this page.");
     }
   };

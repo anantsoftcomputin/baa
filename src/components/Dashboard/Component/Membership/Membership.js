@@ -36,7 +36,7 @@ const useMembershipPurchase = () => {
       if (result.status === "paid") {
         logMembershipPurchaseCompleted("membership");
         await refreshUserProfile();
-        toast.success("Welcome! You're now a lifetime member.");
+        toast.success("Welcome! You're now an alumni member.");
       }
     } catch (error) {
       console.error("Membership payment error:", error);
@@ -61,7 +61,7 @@ export const MembershipCard = () => {
         <Stack direction="row" spacing={1.5} alignItems="center">
           <VerifiedRoundedIcon sx={{ color: "primary.light", fontSize: 32 }} />
           <Box>
-            <Typography sx={{ fontWeight: 700 }}>Lifetime member</Typography>
+            <Typography sx={{ fontWeight: 700 }}>Alumni Member</Typography>
             <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.75)" }}>
               {userProfile?.membershipDate ? `Since ${formatDate(userProfile.membershipDate)}` : "Thank you for your support"}
             </Typography>
@@ -76,7 +76,7 @@ export const MembershipCard = () => {
       <Box sx={{ position: "absolute", right: -30, top: -30, width: 120, height: 120, borderRadius: "50%", bgcolor: "rgba(232,133,31,0.1)" }} />
       <WorkspacePremiumRoundedIcon color="primary" sx={{ fontSize: 32 }} />
       <Typography variant="h6" sx={{ mt: 1 }}>
-        Become a lifetime member
+        Become an alumni member
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
         One payment of <strong>{formatCurrency(settings.amount)}</strong> — yours for life.
@@ -103,7 +103,7 @@ const Membership = () => {
     <Box sx={{ maxWidth: 1000, mx: "auto" }}>
       <DashboardHeader
         eyebrow="Membership"
-        title="Lifetime membership"
+        title="Alumni Membership"
         subtitle="Support the association and stay part of the Bhavan's family for life."
         actions={
           isAdmin && (
@@ -148,7 +148,7 @@ const Membership = () => {
               <>
                 <VerifiedRoundedIcon sx={{ fontSize: 48, color: "primary.light" }} />
                 <Typography variant="h4" sx={{ mt: 2, color: "#fff" }}>
-                  You're a lifetime member
+                  You're an alumni member
                 </Typography>
                 <Typography sx={{ mt: 1, color: "rgba(255,255,255,0.75)" }}>
                   {userProfile?.membershipDate ? `Member since ${formatDate(userProfile.membershipDate)}.` : ""} Thank you for supporting the
@@ -174,7 +174,7 @@ const Membership = () => {
                 </Button>
                 <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ mt: 1.5, color: "rgba(255,255,255,0.6)" }}>
                   <LockRoundedIcon sx={{ fontSize: 14 }} />
-                  <Typography variant="caption">Secure payment via Razorpay</Typography>
+                  <Typography variant="caption">Secure payment via CCAvenue</Typography>
                 </Stack>
                 <PaymentTermsNote light />
               </>

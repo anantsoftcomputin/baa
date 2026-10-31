@@ -187,7 +187,7 @@ const ProfileView = ({ profile, isOwn, onProfileChange }) => {
                   {name}
                 </Typography>
                 {profile.is_member && (
-                  <Tooltip title="Lifetime member">
+                  <Tooltip title="Alumni Member">
                     <VerifiedRoundedIcon color="secondary" />
                   </Tooltip>
                 )}

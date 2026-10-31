@@ -31,7 +31,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 const TERMS = [
   ["Account Registration", "You must provide accurate and complete information during registration. You are responsible for maintaining the confidentiality of your account credentials."],
-  ["Membership", "Access to full platform features requires a lifetime membership fee. Payment details and refund policies are available on the membership page."],
+  ["Membership", "Access to full platform features requires an Alumni Membership fee. Payment details and refund policies are available on the membership page."],
   ["User Content", "You retain ownership of content you post but grant BAA a license to use, display, and distribute such content on the platform."],
   ["Privacy", "Your personal information will be handled according to our Privacy Policy. We are committed to protecting your data."],
   ["Acceptable Use", "You agree not to post offensive, defamatory, or illegal content. BAA reserves the right to remove content and suspend accounts that violate these terms."],

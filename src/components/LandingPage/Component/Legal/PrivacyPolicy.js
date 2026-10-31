@@ -32,7 +32,7 @@ const PrivacyPolicy = () => {
       content: (
         <p>
           This policy explains how we collect, use, share, store and protect personal data when you visit the Platform, create an
-          account, maintain an alumni profile, post content, register for events, purchase a lifetime membership, make a contribution
+          account, maintain an alumni profile, post content, register for events, purchase an Alumni Membership, make a contribution
           to an initiative, or contact us. It should be read together with our{" "}
           <RouterLink to="/terms-and-conditions">Terms &amp; Conditions</RouterLink> and{" "}
           <RouterLink to="/refund-policy">Refund &amp; Cancellation Policy</RouterLink>.
@@ -67,8 +67,7 @@ const PrivacyPolicy = () => {
             <li>
               <strong>Payments:</strong> when you pay for a membership, an event or make a contribution, we record the purpose and
               amount of the payment, the order and payment reference numbers, and the payment status.{" "}
-              <strong>Card, UPI, net-banking and wallet details are collected and processed directly by our payment gateway, Razorpay
-              Software Private Limited, and are not received or stored by us.</strong>
+              <strong>Card, UPI, net-banking and wallet details are collected and processed directly by our payment gateway, CCAvenue, and are not received or stored by us.</strong>
             </li>
             <li>
               <strong>Messages:</strong> the name, email address, phone number, address, topic and message you submit through the
@@ -156,7 +155,7 @@ const PrivacyPolicy = () => {
               analytics;
             </li>
             <li>
-              <strong>Razorpay Software Private Limited:</strong> processing of payments;
+              <strong>CCAvenue:</strong> processing of payments;
             </li>
             <li>
               <strong>Our website hosting provider:</strong> delivery of the website;

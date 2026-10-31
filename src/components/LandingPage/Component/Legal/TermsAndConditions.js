@@ -61,11 +61,11 @@ const TermsAndConditions = () => {
     },
     {
       id: "membership",
-      title: "Lifetime membership",
+      title: "Alumni Membership",
       content: (
         <ul>
           <li>
-            Lifetime membership is available on payment of the one-time membership fee displayed on the Platform at the time of
+            Alumni Membership is available on payment of the one-time membership fee displayed on the Platform at the time of
             payment. The Association may revise the fee for future purchases; a revision does not affect memberships already paid
             for.
           </li>
@@ -137,7 +137,7 @@ const TermsAndConditions = () => {
         <ul>
           <li>All amounts are payable in Indian Rupees (INR). Any applicable taxes will be shown at the time of payment.</li>
           <li>
-            Payments are processed by Razorpay Software Private Limited, a third-party payment gateway, through the payment methods
+            Payments are processed by CCAvenue, a third-party payment gateway, through the payment methods
             it supports (such as cards, UPI, net banking and wallets). Your use of the payment gateway is also subject to its terms.
             The Association does not receive or store your card or bank credentials.
           </li>
@@ -224,7 +224,7 @@ const TermsAndConditions = () => {
       title: "Third-party services and links",
       content: (
         <p>
-          The Platform relies on third-party services such as Google Firebase and Razorpay, and may contain links to third-party
+          The Platform relies on third-party services such as Google Firebase and CCAvenue, and may contain links to third-party
           websites. The Association does not control and is not responsible for those services or websites, their content or their
           practices.
         </p>

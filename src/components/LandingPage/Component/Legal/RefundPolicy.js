@@ -23,7 +23,7 @@ const RefundPolicy = () => {
           <p>This applies to all payments, including:</p>
           <ul>
             <li>
-              <strong>Lifetime membership fees.</strong> Membership is activated as soon as payment is confirmed, and the fee is not
+              <strong>Alumni Membership fees.</strong> Membership is activated as soon as payment is confirmed, and the fee is not
               refundable in whole or in part, including if membership is later suspended or terminated under our{" "}
               <RouterLink to="/terms-and-conditions">Terms &amp; Conditions</RouterLink>.
             </li>
@@ -66,7 +66,7 @@ const RefundPolicy = () => {
           <p>
             Sometimes money is debited from your bank account, card or UPI app but the payment is not completed and no confirmation is
             shown on the Platform. Such a payment has not been received by the Association. The amount is reversed to your original
-            payment method by your bank or by our payment gateway, Razorpay Software Private Limited, usually within 5–7 working days
+            payment method by your bank or by our payment gateway, CCAvenue, usually within 5–7 working days
             and in line with the timelines prescribed by the Reserve Bank of India. This reversal is processed by the bank or the
             payment gateway and is not a refund by the Association.
           </p>
@@ -93,7 +93,7 @@ const RefundPolicy = () => {
       title: "Delivery of services",
       content: (
         <p>
-          The Association does not sell or ship physical goods. Lifetime membership is activated online immediately after successful
+          The Association does not sell or ship physical goods. Alumni Membership is activated online immediately after successful
           payment. Event registrations are confirmed online immediately after successful payment, and the event is delivered on the
           date and at the venue published for it. Contributions are acknowledged online immediately after successful payment.
         </p>

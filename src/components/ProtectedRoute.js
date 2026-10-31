@@ -13,7 +13,7 @@ export const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-/** Requires a lifetime member; others are sent to the membership page. */
+/** Requires an alumni member; others are sent to the membership page. */
 export const MemberRoute = ({ children }) => {
   const { currentUser, userProfile, loading } = useAuth();
   const location = useLocation();

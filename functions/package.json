@@ -1,16 +1,16 @@
 {
   "name": "baa-alumni-functions",
-  "description": "Cloud Functions for the BAA Alumni Portal (Razorpay payments)",
+  "description": "Cloud Functions for the BAA Alumni Portal (CCAvenue payments)",
   "private": true,
   "main": "index.js",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test": "node --test test/payments.test.js"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
