@@ -139,18 +139,41 @@ const gatewayStatus = async (orderId, environment) => {
       request_type: "JSON", response_type: "JSON", version: "1.2",
     }).toString(),
   });
-  if (!response.ok) throw new Error("Gateway status unavailable.");
+  if (!response.ok) throw Object.assign(new Error("Gateway status unavailable."), { gatewayReason: "http_error", httpStatus: response.status });
   const envelope = new URLSearchParams(await response.text());
-  if (envelope.get("status") !== "0") throw new Error("Gateway status unavailable.");
-  const decoded = JSON.parse(decrypt(envelope.get("enc_response"), WORKING_KEY.value()));
+  // On status=1 enc_response is plaintext, not encrypted. Keep the gateway's
+  // numeric code for diagnostics without logging credentials or response bodies.
+  if (envelope.get("status") !== "0") throw Object.assign(new Error("Gateway status unavailable."), {
+    gatewayReason: "api_rejected", gatewayCode: safeGatewayCode(envelope.get("enc_error_code")),
+  });
+  // Live DoWebTrans responses append CRLF to the final enc_response field.
+  // Remove surrounding transport whitespace before strict ciphertext validation.
+  let decoded;
+  try {
+    decoded = JSON.parse(decrypt(envelope.get("enc_response")?.trim(), WORKING_KEY.value()));
+  } catch (error) {
+    throw Object.assign(new Error("Invalid gateway status response."), { gatewayReason: "invalid_status_response" });
+  }
   const data = decoded.Order_Status_Result || decoded;
-  if (data.error_code || (data.status !== undefined && String(data.status) !== "0")) throw new Error("Gateway status unavailable.");
+  if ((data.error_code && String(data.error_code).trim() !== "0") || (data.status !== undefined && String(data.status) !== "0")) {
+    throw Object.assign(new Error("Gateway status unavailable."), {
+      gatewayReason: "order_query_rejected", gatewayCode: safeGatewayCode(data.error_code),
+    });
+  }
   return {
     order_id: String(data.order_no || ""), amount: data.order_amt,
-    currency: data.order_currncy, tracking_id: String(data.reference_no || ""),
+    // The API guide's field table and JSON example use different spellings.
+    currency: data.order_currncy ?? data.order_curr, tracking_id: String(data.reference_no || ""),
     order_status: data.order_status,
   };
 };
+
+const safeGatewayCode = (code) => /^\d{1,10}$/.test(String(code || "").trim()) ? String(code).trim() : "unknown";
+const reconciliationDetails = (orderId, error) => ({
+  orderId, reason: error.gatewayReason || (error.name === "TimeoutError" ? "timeout" : "verification_failed"),
+  ...(error.gatewayCode ? { gatewayCode: error.gatewayCode } : {}),
+  ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
+});
 
 const settleOrder = async (orderId, result) => db.runTransaction(async (tx) => {
   const orderRef = db.doc(`paymentOrders/${orderId}`);
@@ -158,10 +181,10 @@ const settleOrder = async (orderId, result) => db.runTransaction(async (tx) => {
   if (!snap.exists) throw new Error("Order not found.");
   const order = snap.data();
   if (["paid", "test_paid"].includes(order.status)) return order.status;
-  if (!matchesOrder(result, order)) throw new Error("Payment details do not match the order.");
-  const status = String(result.order_status).toLowerCase();
+  if (!matchesOrder(result, order)) throw Object.assign(new Error("Payment details do not match the order."), { gatewayReason: "order_details_mismatch" });
+  const status = String(result.order_status).trim().toLowerCase();
   if (!["success", "successful", "shipped"].includes(status)) {
-    const state = ["failure", "failed", "aborted", "cancelled", "invalid", "auto-cancelled", "timeout"].includes(status) ? "failed" : "pending";
+    const state = ["failure", "failed", "unsuccessful", "aborted", "cancelled", "invalid", "auto-cancelled", "auto-reversed", "refunded", "system refund", "chargeback", "fraud", "timeout"].includes(status) ? "failed" : "pending";
     tx.update(orderRef, { status: state, updatedAt: FieldValue.serverTimestamp() });
     return state;
   }
@@ -221,12 +244,42 @@ exports.ccavenueResponse = onRequest({ ...options, invoker: "public" }, async (r
     try {
       await settleOrder(orderId, await gatewayStatus(orderId, snap.data().environment));
     } catch (error) {
-      logger.warn("CCAvenue reconciliation deferred", { orderId });
+      logger.warn("CCAvenue reconciliation deferred", reconciliationDetails(orderId, error));
     }
     return res.redirect(303, `${siteOrigin()}/dashboard/payment-result?orderId=${encodeURIComponent(orderId)}`);
   } catch (error) {
     logger.warn("Invalid CCAvenue callback");
     return res.status(400).send("Payment response could not be verified. Return to the portal to check your payment status.");
+  }
+});
+
+// Register this endpoint for Order Status Echo and Order Reconciliation Status.
+// Notifications are server-to-server and require an HTTP acknowledgement,
+// rather than the browser callback's redirect. Query the API before fulfilment.
+exports.ccavenueNotification = onRequest({ ...options, invoker: "public" }, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (req.method !== "POST") return res.status(405).set("Allow", "POST").send("Method not allowed.");
+  let orderId;
+  let order;
+  try {
+    const body = typeof req.body === "string" ? Object.fromEntries(new URLSearchParams(req.body)) : req.body;
+    const result = Object.fromEntries(new URLSearchParams(decrypt(body?.encResp, WORKING_KEY.value())));
+    orderId = result.order_id;
+    if (!validId(orderId)) throw new Error("Invalid order.");
+    const snap = await db.doc(`paymentOrders/${orderId}`).get();
+    if (!snap.exists || !matchesOrder(result, snap.data())) throw new Error("Invalid order.");
+    order = snap.data();
+  } catch (error) {
+    logger.warn("Invalid CCAvenue notification");
+    return res.status(400).send("Invalid notification.");
+  }
+  if (["paid", "test_paid"].includes(order.status)) return res.status(200).send("OK");
+  try {
+    await settleOrder(orderId, await gatewayStatus(orderId, order.environment));
+    return res.status(200).send("OK");
+  } catch (error) {
+    logger.warn("CCAvenue notification reconciliation deferred", reconciliationDetails(orderId, error));
+    return res.status(503).send("Payment verification unavailable.");
   }
 });
 
@@ -242,7 +295,7 @@ exports.verifyPayment = onCall(options, async (request) => {
     try {
       status = await settleOrder(orderId, await gatewayStatus(orderId, order.environment));
     } catch (error) {
-      logger.warn("CCAvenue status check deferred", { orderId });
+      logger.warn("CCAvenue status check deferred", reconciliationDetails(orderId, error));
       throw new HttpsError("unavailable", "Payment confirmation is pending. Please check again shortly before making another payment.");
     }
   }

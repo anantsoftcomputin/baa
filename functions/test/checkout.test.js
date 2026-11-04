@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 const { encrypt, decrypt } = require("../payments");
 const key = "test-working-key";
+const warnings = [];
 let environment = "production";
 const docs = new Map();
 const ref = (path) => ({
@@ -40,22 +41,27 @@ Module._load = function (name, ...args) {
     defineSecret: () => ({ value: () => key }),
     defineString: (param) => ({ value: () => param === "CCAVENUE_ENV" ? environment : ({ CCAVENUE_MERCHANT_ID: "12345", CCAVENUE_ACCESS_CODE: "test-access", PAYMENT_SITE_URL: "https://example.org" })[param] }),
   };
-  if (name === "firebase-functions/logger") return { warn() {} };
+  if (name === "firebase-functions/logger") return { warn(message, details) { warnings.push({ message, details }); } };
   return originalLoad.call(this, name, ...args);
 };
 const handlers = require("../index");
 Module._load = originalLoad;
 const request = (data, uid = "user1") => ({ auth: { uid, token: { email: "user@example.org", email_verified: true } }, data });
 let apiResult;
+let apiEnvelope;
 const originalFetch = global.fetch;
 global.fetch = async (_url, opts) => {
   assert.equal(_url, environment === "test" ? "https://apitest.ccavenue.com/apis/servlet/DoWebTrans" : "https://api.ccavenue.com/apis/servlet/DoWebTrans");
   const body = new URLSearchParams(opts.body);
   assert.equal(body.get("command"), "orderStatusTracker");
+  assert.equal(body.get("version"), "1.2");
+  assert.equal(body.get("request_type"), "JSON");
+  assert.equal(body.get("response_type"), "JSON");
   const query = JSON.parse(decrypt(body.get("enc_request"), key));
   assert.ok(query.order_no);
   if (apiResult instanceof Error) throw apiResult;
-  return { ok: true, text: async () => new URLSearchParams({ status: "0", enc_response: encrypt(JSON.stringify(apiResult), key) }).toString() };
+  // Match the live gateway's trailing CRLF after its last form field.
+  return { ok: true, text: async () => apiEnvelope || `${new URLSearchParams({ status: "0", enc_response: encrypt(JSON.stringify(apiResult), key) })}\r\n` };
 };
 test.after(() => { global.fetch = originalFetch; });
 const api = (order, extra = {}) => ({ order_no: order.orderId, order_amt: "2500.00", order_currncy: "INR", reference_no: "123456789", order_status: "Successful", status: 0, ...extra });
@@ -104,6 +110,31 @@ test("checkout lifecycle and failure boundaries", async (t) => {
     apiResult = api(checkout, { order_amt: 1 });
     await assert.rejects(handlers.verifyPayment(request({ orderId: checkout.orderId })), { code: "unavailable" });
     assert.equal(docs.get("users/user1").is_member, false);
+  });
+  await t.test("plaintext API rejection logs its code without exposing the response", async () => {
+    apiEnvelope = "status=1&enc_response=Access_code%3A+Invalid+Parameter&enc_error_code=51407";
+    await assert.rejects(handlers.verifyPayment(request({ orderId: checkout.orderId })), { code: "unavailable" });
+    assert.equal(warnings.at(-1).details.gatewayCode, "51407");
+    assert.equal(warnings.at(-1).details.reason, "api_rejected");
+    assert.equal(JSON.stringify(warnings).includes("Access_code"), false);
+    apiEnvelope = null;
+  });
+  await t.test("decrypted order-query errors stay retryable and log the application code", async () => {
+    apiResult = { status: 1, error_code: "51313", error_desc: "No record found." };
+    await assert.rejects(handlers.verifyPayment(request({ orderId: checkout.orderId })), { code: "unavailable" });
+    assert.equal(warnings.at(-1).details.gatewayCode, "51313");
+    assert.equal(warnings.at(-1).details.reason, "order_query_rejected");
+    assert.equal(docs.get(`paymentOrders/${checkout.orderId}`).status, "created");
+    assert.equal(docs.get("users/user1").is_member, false);
+  });
+  await t.test("transport whitespace is accepted but malformed ciphertext is rejected", async () => {
+    apiResult = api(checkout, { order_status: "Initiated" });
+    assert.equal((await handlers.verifyPayment(request({ orderId: checkout.orderId }))).status, "pending");
+    apiEnvelope = new URLSearchParams({ status: "0", enc_response: `${encrypt(JSON.stringify(apiResult), key)}Z` }).toString();
+    await assert.rejects(handlers.verifyPayment(request({ orderId: checkout.orderId })), { code: "unavailable" });
+    assert.equal(warnings.at(-1).details.reason, "invalid_status_response");
+    assert.equal(docs.get("users/user1").is_member, false);
+    apiEnvelope = null;
   });
   await t.test("valid encrypted callback uses API and grants membership once", async () => {
     const fields = new URLSearchParams(decrypt(checkout.encRequest, key));
@@ -155,6 +186,50 @@ test("checkout lifecycle and failure boundaries", async (t) => {
     assert.equal(reg.total_amount, 1000);
     assert.equal(reg.amount_paid, 1000);
     await assert.rejects(handlers.createPaymentOrder(request({ purpose: "event", refId: "event1_user1" })), { code: "failed-precondition" });
+  });
+
+  await t.test("server notification recovers a payment using order_curr and is idempotent", async () => {
+    docs.set("users/notifyuser", { is_member: false });
+    const order = await handlers.createPaymentOrder(request({ purpose: "membership" }, "notifyuser"));
+    // The documented notification example does not include merchant_param1.
+    const body = new URLSearchParams({ encResp: encrypt(new URLSearchParams({ order_id: order.orderId, currency: "INR", amount: "2500.00", order_status: "Success" }).toString(), key) }).toString();
+    apiResult = api(order, { order_currncy: undefined, order_curr: "INR", reference_no: "notifypayment123" });
+    const res = response();
+    await handlers.ccavenueNotification({ method: "POST", body }, res);
+    assert.equal(res.code, 200);
+    assert.equal(res.body, "OK");
+    assert.equal(docs.get("users/notifyuser").is_member, true);
+    apiResult = new Error("duplicate must not query the API");
+    const duplicate = response();
+    await handlers.ccavenueNotification({ method: "POST", body }, duplicate);
+    assert.equal(duplicate.code, 200);
+    assert.equal([...docs.keys()].filter(p => p === "payments/cca_notifypayment123").length, 1);
+  });
+
+  await t.test("notification cannot grant benefits while the API is unavailable", async () => {
+    docs.set("users/pendinguser", { is_member: false });
+    const order = await handlers.createPaymentOrder(request({ purpose: "membership" }, "pendinguser"));
+    const body = { encResp: encrypt(new URLSearchParams({ order_id: order.orderId, currency: "INR", amount: "2500.00", order_status: "Success" }).toString(), key) };
+    apiResult = new Error("timeout");
+    const res = response();
+    await handlers.ccavenueNotification({ method: "POST", body }, res);
+    assert.equal(res.code, 503);
+    assert.equal(docs.get("users/pendinguser").is_member, false);
+    const malformed = response();
+    await handlers.ccavenueNotification({ method: "POST", body: { encResp: "invalid" } }, malformed);
+    assert.equal(malformed.code, 400);
+    const mismatch = response();
+    await handlers.ccavenueNotification({ method: "POST", body: { encResp: encrypt(new URLSearchParams({ order_id: order.orderId, currency: "INR", amount: "1.00" }).toString(), key) } }, mismatch);
+    assert.equal(mismatch.code, 400);
+  });
+
+  await t.test("unsuccessful and auto-reversed API statuses are failures", async () => {
+    for (const orderStatus of ["Unsuccessful", "Auto-Reversed"]) {
+      const order = await handlers.createPaymentOrder(request({ purpose: "membership" }, "pendinguser"));
+      apiResult = api(order, { order_status: orderStatus });
+      assert.equal((await handlers.verifyPayment(request({ orderId: order.orderId }, "pendinguser"))).status, "failed");
+      assert.equal(docs.get("users/pendinguser").is_member, false);
+    }
   });
 
   await t.test("test checkout routes to staging and cannot grant production benefits", async () => {
